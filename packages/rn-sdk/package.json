@@ -1,0 +1,42 @@
+{
+  "name": "@rnperf/sdk",
+  "version": "0.1.0",
+  "description": "In-app performance probe for React Native \u2014 JS FPS, stalls, heap, component renders, and UI-thread frames via CADisplayLink on iOS",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "ios",
+    "android",
+    "RNPerfSDK.podspec",
+    "react-native.config.js",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepare": "tsc -b"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.70"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": false
+    },
+    "react-native": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@rnperf/protocol": "*"
+  },
+  "keywords": [
+    "react-native",
+    "performance",
+    "profiling",
+    "fps",
+    "memory"
+  ]
+}

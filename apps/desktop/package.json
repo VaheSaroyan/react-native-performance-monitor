@@ -1,0 +1,49 @@
+{
+  "name": "@rnperf/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Measure React Native app performance on devices, simulators and emulators",
+  "author": "rnperf",
+  "license": "MIT",
+  "main": "out/main.mjs",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"wait-on tcp:5273 && RNPERF_DEV=1 electron .\"",
+    "build": "vite build && node build-main.mjs",
+    "build:main": "node build-main.mjs",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder --mac",
+    "package:dir": "npm run build && electron-builder --mac --dir"
+  },
+  "dependencies": {
+    "@rnperf/daemon": "*",
+    "@rnperf/protocol": "*"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "33.4.11",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.15.0",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "dev.rnperf.monitor",
+    "productName": "RN Performance Monitor",
+    "electronVersion": "33.4.11",
+    "directories": { "output": "release" },
+    "files": ["out/**/*", "dist/**/*", "package.json"],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "identity": null,
+      "notarize": false
+    }
+  }
+}

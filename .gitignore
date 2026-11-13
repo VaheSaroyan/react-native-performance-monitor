@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+apps/desktop/out/
+apps/desktop/release/
+.rnperf/
+packages/mcp-server/bundle/
+.playwright-mcp/

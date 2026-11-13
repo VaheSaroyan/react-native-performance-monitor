@@ -1,0 +1,46 @@
+apply plugin: 'com.android.library'
+
+/**
+ * Read a property from the host app's rootProject.ext when it defines one, so
+ * this module compiles against the same SDK levels as the app including it,
+ * and still builds standalone when it does not.
+ */
+def safeExtGet(String prop, fallback) {
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+    // `namespace` replaced the manifest's package attribute in AGP 7.3 and is
+    // required by AGP 8. Guarded so older toolchains do not fail on it.
+    if (project.android.hasProperty('namespace')) {
+        namespace 'com.rnperf.sdk'
+    }
+
+    compileSdk safeExtGet('compileSdkVersion', 34)
+
+    defaultConfig {
+        minSdk safeExtGet('minSdkVersion', 21)
+        targetSdk safeExtGet('targetSdkVersion', 34)
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    // A profiling helper must never be the reason an app build fails.
+    lint {
+        abortOnError false
+    }
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // Version is supplied by the host app's React Native Gradle plugin.
+    //noinspection GradleDynamicVersion
+    implementation 'com.facebook.react:react-android'
+}

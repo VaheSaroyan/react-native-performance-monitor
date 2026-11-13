@@ -1,0 +1,16 @@
+{
+  "name": "@rnperf/daemon",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": { "rnperf": "./dist/cli.js" },
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "scripts": { "build": "tsc -b", "clean": "rm -rf dist *.tsbuildinfo" },
+  "dependencies": {
+    "@rnperf/protocol": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": { "@types/ws": "^8.5.13" }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "rnperf-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "React Native performance monitor for macOS, with an MCP bridge for coding agents",
+  "workspaces": [
+    "packages/protocol",
+    "packages/daemon",
+    "packages/rn-sdk",
+    "packages/mcp-server",
+    "apps/desktop"
+  ],
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "build": "npm run build -w @rnperf/protocol && npm run build -w @rnperf/daemon && npm run build -w @rnperf/sdk && npm run build -w @rnperf/mcp-server",
+    "daemon": "npm run build -w @rnperf/protocol && npm run build -w @rnperf/daemon && node packages/daemon/dist/cli.js daemon",
+    "devices": "node packages/daemon/dist/cli.js devices",
+    "mcp": "node packages/mcp-server/dist/index.js",
+    "desktop": "npm -w @rnperf/desktop run dev",
+    "typecheck": "tsc -b packages/protocol packages/daemon packages/rn-sdk packages/mcp-server"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.2"
+  }
+}
