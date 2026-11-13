@@ -36,14 +36,30 @@
     "appId": "dev.rnperf.monitor",
     "productName": "RN Performance Monitor",
     "electronVersion": "33.4.11",
-    "directories": { "output": "release" },
-    "files": ["out/**/*", "dist/**/*", "package.json"],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
     "asar": true,
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": [{ "target": "dmg", "arch": ["arm64"] }],
-      "identity": null,
-      "notarize": false
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "notarize": false,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
     }
   }
 }

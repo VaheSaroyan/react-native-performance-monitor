@@ -94,21 +94,31 @@ Three separate artifacts, with three different answers.
 
 ### The desktop app
 
-`npm -w @rnperf/desktop run package` produces a DMG, but it is **unsigned**, so macOS Gatekeeper
-blocks it on any machine other than the one that built it. Either sign it, or tell the recipient
-to clear the quarantine flag:
+```bash
+export CSC_NAME="Your Name (TEAMID)"     # the common name only, no "Developer ID Application:" prefix
+npm -w @rnperf/desktop run package
+```
+
+The app is signed with a Developer ID and the hardened runtime, with entitlements in
+`apps/desktop/build/entitlements.mac.plist` — Electron's JIT needs `allow-jit` and
+`allow-unsigned-executable-memory`, and the daemon shells out to `adb` and `xcrun`, which needs
+`disable-library-validation`.
+
+Signing alone is not enough for another Mac: Gatekeeper rejects a signed-but-unnotarised app
+(`source=Unnotarized Developer ID`). To notarise, set `notarize: true` in `build.mac` and supply
+credentials:
+
+```bash
+export APPLE_ID=you@example.com
+export APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx   # appleid.apple.com → App-Specific Passwords
+export APPLE_TEAM_ID=TEAMID
+npm -w @rnperf/desktop run package
+```
+
+Until then, a recipient can clear the quarantine flag themselves:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/RN Performance Monitor.app"
-```
-
-To sign properly you need a Developer ID certificate. Remove `identity` and `notarize` from
-`build.mac` in `apps/desktop/package.json`, then:
-
-```bash
-export CSC_NAME="Developer ID Application: Your Name (TEAMID)"
-export APPLE_ID=... APPLE_APP_SPECIFIC_PASSWORD=... APPLE_TEAM_ID=...
-npm -w @rnperf/desktop run package
 ```
 
 ### The MCP server
@@ -132,14 +142,17 @@ own.
 This one goes into another codebase, so it has to resolve on every machine that installs that
 project — including CI. A local path will not do that. In increasing order of effort:
 
+**npm cannot install a subdirectory of a git repository**, so a plain git dependency pointing at
+this monorepo installs the repo root, not the SDK. That leaves three workable routes:
+
 | Approach | Works in CI | Setup |
 |---|---|---|
-| Commit the tarball to the consuming repo | yes | none, but a binary in git |
-| Git dependency (`npm i git+ssh://…#v0.1.0`) | yes | needs `git init` and a `prepare` script, since `dist/` is gitignored |
-| Private registry (org-scoped) | yes | registry auth on every machine and in CI |
+| Commit the tarball into the consuming repo | yes | none, but a binary blob in git |
+| Private registry — Azure Artifacts, GitHub Packages, npm org | yes | registry auth on every machine and in CI |
+| Split `packages/rn-sdk` into its own repo | yes | a second repo to keep in step |
 
-Start with the tarball. Move to a git dependency the moment a second person or a build agent
-needs it; publish to a registry only when several teams do.
+`npm pack -w @rnperf/sdk` produces the tarball for the first option. The package has a `prepare`
+script, so it also builds itself correctly if it is ever installed straight from a git URL.
 
 ## Adding the SDK to your app
 
