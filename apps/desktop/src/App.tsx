@@ -432,6 +432,16 @@ function SessionView({
   const shown = isLive && samples.length ? samples : stored.length ? stored : samples;
   const series = useMemo(() => chartsFor(shown), [shown]);
 
+  // Device-side collectors see only CPU and memory. When nothing is reporting
+  // from inside the app, most charts are simply absent, and the gap is worth
+  // naming rather than leaving the reader to wonder.
+  const hasSdkData = useMemo(
+    () => shown.some((s) =>
+      typeof s.jsFps === 'number' || typeof s.uiFps === 'number' ||
+      typeof s.jsHeapMB === 'number' || s.renders !== undefined),
+    [shown],
+  );
+
   return (
     <>
       <div className="topbar">
@@ -475,12 +485,51 @@ function SessionView({
             </p>
           </div>
         ) : (
-          <div className="chart-grid">
-            {series.map((s) => <MetricChart key={s.key} samples={shown} series={s} live={isLive} />)}
-          </div>
+          <>
+            <div className="chart-grid">
+              {series.map((s) => <MetricChart key={s.key} samples={shown} series={s} live={isLive} />)}
+            </div>
+            {!hasSdkData && <SdkMissingNote platform={analysis?.summary.meta.device.platform} />}
+          </>
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Shown when a recording has only device-side data. Names what is missing and
+ * the one step that produces it, rather than leaving an unexplained gap.
+ */
+function SdkMissingNote({ platform }: { platform?: string }) {
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <h3>Only CPU and memory were recorded</h3>
+      <p style={{ fontSize: 12.5, color: 'var(--ink-dim)', lineHeight: 1.65 }}>
+        Those are the only measurements readable from outside the app. Frame rates, dropped frames,
+        JS thread stalls, heap and per-component render counts all come from the SDK running inside
+        it — and without them this recording cannot produce findings.
+      </p>
+      <div className="steps" style={{ marginTop: 12 }}>
+        <div className="step">
+          <span className="k">1</span>
+          <span>Install the SDK: <code>npm pack -w @rnperf/sdk</code>, then install that tarball in
+            your app.</span>
+        </div>
+        <div className="step">
+          <span className="k">2</span>
+          <span>Call <code>startPerfMonitor()</code> at your entry point, before the root component.</span>
+        </div>
+        <div className="step">
+          <span className="k">3</span>
+          <span>
+            {platform === 'android'
+              ? 'Rebuild the app so autolinking picks up the native frame module.'
+              : 'Run pod install and rebuild. Expo Go cannot load the native module; a development build can.'}
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
 
