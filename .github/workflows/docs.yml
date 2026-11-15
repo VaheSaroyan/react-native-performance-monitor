@@ -49,11 +49,10 @@ jobs:
           done
           exit $failed
 
-      # enablement turns Pages on and points it at Actions the first time this
-      # runs, so the site comes up without a trip through repository settings.
+      # No `enablement: true` here: creating the Pages site needs admin, which
+      # the workflow token does not have. Pages is set to build from Actions
+      # once, out of band, and this step then just reads that configuration.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
