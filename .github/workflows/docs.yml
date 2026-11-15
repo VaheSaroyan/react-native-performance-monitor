@@ -1,0 +1,59 @@
+name: Docs
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and never cancel one in flight: a half-replaced
+# site is worse than a slightly stale one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pages serves whatever it is handed, including a page whose stylesheet
+      # 404s. Every local reference is checked before anything is uploaded.
+      # The pattern excludes ':' and '#', which leaves out absolute URLs, the
+      # inline data: favicon and same-page anchors — only real files remain.
+      - name: Check local references resolve
+        run: |
+          cd docs
+          failed=0
+          refs=$(grep -ohE '(src|href)="[^"#:]+"' ./*.html | sed -E 's/^(src|href)="//; s/"$//' | sort -u)
+          for ref in $refs; do
+            if [ -e "$ref" ]; then
+              echo "ok   $ref"
+            else
+              echo "::error file=docs/index.html::$ref does not exist"
+              failed=1
+            fi
+          done
+          exit $failed
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "description": "React Native performance monitor for macOS, with an MCP bridge for coding agents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VaheSaroyan/react-native-performance-monitor.git"
+  },
+  "homepage": "https://vahesaroyan.github.io/react-native-performance-monitor/",
   "workspaces": [
     "packages/protocol",
     "packages/daemon",

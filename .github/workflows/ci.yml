@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Everything that does not need a Mac. Fast, and it is what gates a PR.
+  build:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build every package
+        run: npm run build
+
+      - name: Build the desktop renderer and main process
+        run: npm -w @rnperf/desktop run build
+
+      - name: Bundle the MCP server
+        run: npm -w @rnperf/mcp-server run bundle
+
+      # The bundle is the artifact teammates actually run, and esbuild will
+      # happily produce one that is broken at load time. Speak MCP to it over
+      # stdio and require the tools back. The daemon client is lazy, so this
+      # starts no daemon and touches no device.
+      - name: Check the MCP bundle answers over stdio
+        run: |
+          {
+            echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}'
+            echo '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+            echo '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+          } | timeout 60 node packages/mcp-server/bundle/rnperf-mcp.mjs > mcp-handshake.json
+          cat mcp-handshake.json
+          for tool in list_devices start_session stop_session get_findings diff_sessions locate_component; do
+            grep -q "\"$tool\"" mcp-handshake.json || { echo "::error::$tool missing from tools/list"; exit 1; }
+          done
+
+      - name: Pack the SDK
+        run: npm pack -w @rnperf/sdk --pack-destination "$RUNNER_TEMP"
+
+      # The SDK ships native code that no amount of typechecking covers. If a
+      # file stops being listed in package.json "files", autolinking breaks in
+      # the consuming app and nothing here would otherwise notice.
+      - name: Check the SDK tarball carries its native modules
+        run: |
+          tarball=$(ls "$RUNNER_TEMP"/rnperf-sdk-*.tgz)
+          tar -tzf "$tarball" > sdk-contents.txt
+          for entry in \
+            package/dist/index.js \
+            package/dist/index.d.ts \
+            package/RNPerfSDK.podspec \
+            package/react-native.config.js \
+            package/ios/RNPerfFrameMonitor.m \
+            package/android/src/main/java/com/rnperf/sdk/RNPerfFrameMonitorModule.java
+          do
+            grep -qx "$entry" sdk-contents.txt || { echo "::error::$entry missing from the SDK tarball"; exit 1; }
+          done
+
+  # electron-builder only behaves on the platform it targets, so the packaging
+  # step needs a Mac even though nothing is signed here.
+  package:
+    name: Package the macOS app
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # --dir stops before the DMG: it proves the app bundle assembles without
+      # spending two minutes on a disk image nobody will open.
+      - name: Package an unsigned .app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npm -w @rnperf/desktop run package:dir
+
+      - name: Check the bundle is complete
+        run: |
+          app="apps/desktop/release/mac-arm64/RN Performance Monitor.app"
+          test -d "$app" || { echo "::error::no app bundle at $app"; exit 1; }
+          test -f "$app/Contents/Resources/app.asar" || { echo "::error::app.asar missing"; exit 1; }
+          npx --yes asar list "$app/Contents/Resources/app.asar" > asar.txt
+          for entry in /out/main.mjs /out/preload.cjs /dist/index.html; do
+            grep -qx "$entry" asar.txt || { echo "::error::$entry missing from app.asar"; exit 1; }
+          done

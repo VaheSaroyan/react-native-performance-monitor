@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>React Native Performance Monitor</title>
+<meta name="description" content="Measure a React Native app on a real device, simulator or emulator, get ranked findings with the file and line to fix, and hand all of it to a coding agent over MCP.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="React Native Performance Monitor">
+<meta property="og:description" content="Frame times, heap and per-component renders from a real device — turned into ranked findings a coding agent can act on.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314171c'/%3E%3Cpath d='M4 21h4l3-9 4 13 3.5-11 2.5 7h7' fill='none' stroke='%237c8cf8' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="wordmark" href="#top"><span class="tick" aria-hidden="true"></span>RN Performance Monitor</a>
+  <nav>
+    <a href="#quickstart" class="hide-sm">Quickstart</a>
+    <a href="#sdk" class="hide-sm">SDK</a>
+    <a href="#agent" class="hide-sm">MCP</a>
+    <a href="https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest">Download</a>
+    <a href="https://github.com/VaheSaroyan/react-native-performance-monitor">GitHub</a>
+  </nav>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-top">
+      <h1>Find the frame that missed, and the component that cost it.</h1>
+      <div>
+        <p class="lede">
+          A macOS app that measures a React Native app on a real device, simulator or emulator,
+          turns the numbers into <strong>ranked findings with a file and a line</strong>, and serves all of it
+          over MCP so Claude Code can read the analysis and make the fix.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest">Download for macOS</a>
+          <a class="btn" href="#quickstart">Read the quickstart</a>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      The hero is the instrument's own output: 96 consecutive frames from a list
+      screen, drawn against the 60Hz budget. Everything the page goes on to
+      explain is visible here — the baseline, the mount hitch, the two renders
+      that blew through 60ms, and the 11% of frames that missed.
+    -->
+    <figure class="trace">
+      <svg viewBox="0 0 1120 200" role="img" aria-labelledby="trace-title">
+        <title id="trace-title">96 consecutive frame times from a list screen. Eleven percent exceed the 16.7 millisecond budget, with two renders peaking near 60 milliseconds.</title>
+        <defs>
+          <clipPath id="clip-under"><rect x="0" y="146" width="1120" height="54"/></clipPath>
+          <clipPath id="clip-over"><rect x="0" y="0" width="1120" height="146"/></clipPath>
+        </defs>
+        <line class="budget" x1="0" y1="146" x2="1120" y2="146" stroke-width="1"/>
+        <text x="1113" y="139" text-anchor="end" fill="#7d8796" font-family="IBM Plex Mono, monospace" font-size="11">16.7ms budget</text>
+        <g fill="none" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">
+          <polyline class="plot under" clip-path="url(#clip-under)" pathLength="1200" stroke-dasharray="1200"
+            points="7,163.7 18.6,160.9 30.3,158.6 41.9,163.1 53.6,158.6 65.2,163.7 76.9,167.1 88.5,124 100.1,123.4 111.8,111.8 123.4,139.5 135.1,164 146.7,159.2 158.3,162.6 170,164 181.6,157.5 193.3,164.8 204.9,165.4 216.6,169.3 228.2,156.9 239.8,160.3 251.5,163.4 263.1,167.9 274.8,156.9 286.4,158.9 298.1,162.3 309.7,159.7 321.3,157.2 333,168.5 344.6,162.3 356.3,158.3 367.9,167.6 379.5,160.3 391.2,166.2 402.8,160 414.5,160.6 426.1,166.2 437.8,162.8 449.4,163.1 461,165.7 472.7,158.9 484.3,62.5 496,111.6 507.6,24.5 519.3,159.7 530.9,168.8 542.5,166.5 554.2,165.1 565.8,158.3 577.5,160 589.1,165.1 600.7,160.9 612.4,167.6 624,163.4 635.7,161.7 647.3,164.3 659,162.8 670.6,167.6 682.2,163.7 693.9,161.7 705.5,165.4 717.2,169 728.8,168.2 740.5,158.1 752.1,111 763.7,126.8 775.4,165.7 787,166.2 798.7,160.6 810.3,159.5 821.9,169 833.6,161.2 845.2,157.5 856.9,157.8 868.5,165.4 880.2,161.7 891.8,165.9 903.4,159.7 915.1,160.6 926.7,161.7 938.4,161.4 950,168.8 961.7,169.3 973.3,122.5 984.9,124 996.6,168.2 1008.2,157.5 1019.9,160.3 1031.5,164.5 1043.1,158.3 1054.8,166.2 1066.4,157.8 1078.1,162.8 1089.7,157.2 1101.4,160 1113,165.4"/>
+          <polyline class="plot over" clip-path="url(#clip-over)" pathLength="1200" stroke-dasharray="1200"
+            points="7,163.7 18.6,160.9 30.3,158.6 41.9,163.1 53.6,158.6 65.2,163.7 76.9,167.1 88.5,124 100.1,123.4 111.8,111.8 123.4,139.5 135.1,164 146.7,159.2 158.3,162.6 170,164 181.6,157.5 193.3,164.8 204.9,165.4 216.6,169.3 228.2,156.9 239.8,160.3 251.5,163.4 263.1,167.9 274.8,156.9 286.4,158.9 298.1,162.3 309.7,159.7 321.3,157.2 333,168.5 344.6,162.3 356.3,158.3 367.9,167.6 379.5,160.3 391.2,166.2 402.8,160 414.5,160.6 426.1,166.2 437.8,162.8 449.4,163.1 461,165.7 472.7,158.9 484.3,62.5 496,111.6 507.6,24.5 519.3,159.7 530.9,168.8 542.5,166.5 554.2,165.1 565.8,158.3 577.5,160 589.1,165.1 600.7,160.9 612.4,167.6 624,163.4 635.7,161.7 647.3,164.3 659,162.8 670.6,167.6 682.2,163.7 693.9,161.7 705.5,165.4 717.2,169 728.8,168.2 740.5,158.1 752.1,111 763.7,126.8 775.4,165.7 787,166.2 798.7,160.6 810.3,159.5 821.9,169 833.6,161.2 845.2,157.5 856.9,157.8 868.5,165.4 880.2,161.7 891.8,165.9 903.4,159.7 915.1,160.6 926.7,161.7 938.4,161.4 950,168.8 961.7,169.3 973.3,122.5 984.9,124 996.6,168.2 1008.2,157.5 1019.9,160.3 1031.5,164.5 1043.1,158.3 1054.8,166.2 1066.4,157.8 1078.1,162.8 1089.7,157.2 1101.4,160 1113,165.4"/>
+        </g>
+      </svg>
+    </figure>
+
+    <dl class="readout">
+      <div><dt>Frame p50</dt><dd>11.1<small>ms</small></dd></div>
+      <div><dt>Frame p95</dt><dd>25.0<small>ms</small></dd></div>
+      <div><dt>Worst frame</dt><dd>60<small>ms</small></dd></div>
+      <div class="is-bad"><dt>Frames over budget</dt><dd>11<small>%</small></dd></div>
+      <p class="caption">
+        Past 10%, the monitor raises <code>ui-jank</code> and names the component that was
+        re-rendering while those frames were missed.
+      </p>
+    </dl>
+  </div>
+</section>
+
+<div class="shell">
+
+  <nav class="rail" aria-label="Contents">
+    <h2>Contents</h2>
+    <ol>
+      <li><a href="#what">What it measures</a></li>
+      <li><a href="#quickstart" class="hide-sm">Quickstart</a></li>
+      <li><a href="#desktop">The desktop app</a></li>
+      <li><a href="#sdk">The in-app SDK</a></li>
+      <li><a href="#agent">Claude Code and MCP</a></li>
+      <li><a href="#findings">What it looks for</a></li>
+      <li><a href="#cli">Terminal</a></li>
+      <li><a href="#releases">Releases and CI</a></li>
+      <li><a href="#limits">Limits worth knowing</a></li>
+      <li><a href="#architecture">How it fits together</a></li>
+    </ol>
+  </nav>
+
+  <article class="doc">
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="what">
+      <h2>What it measures</h2>
+      <p class="standfirst">
+        Two halves. The host watches the process from outside over <code>adb</code>, <code>simctl</code> and
+        <code>devicectl</code>; the SDK watches it from inside. They merge into one timeline, so a memory climb
+        from <code>adb</code> sits on the same chart as the component that was re-rendering while it happened.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Source</th><th>Metrics</th><th>Needs</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="src" style="--bar: var(--m-cpu)">Android</span></td>
+              <td>Over <code>adb</code>: CPU including per-thread (JS, native modules, render), PSS and RSS, Java heap, native heap, graphics memory, real per-frame timings with p50/p95/p99 and jank&nbsp;%, logcat</td>
+              <td>nothing in the app</td>
+            </tr>
+            <tr>
+              <td><span class="src" style="--bar: var(--m-mem)">iOS simulator</span></td>
+              <td>CPU, resident memory, <code>os_log</code> stream</td>
+              <td>nothing in the app</td>
+            </tr>
+            <tr>
+              <td><span class="src" style="--bar: var(--m-mem)">iOS device</span></td>
+              <td>CPU and physical footprint via <code>devicectl</code> and <code>xctrace</code></td>
+              <td>Xcode, a paired device</td>
+            </tr>
+            <tr>
+              <td><span class="src" style="--bar: var(--m-js)">In-app SDK</span></td>
+              <td>JS FPS, JS event-loop stalls, JS heap on Hermes, bridge traffic, <strong>per-component render counts, render cost and wasted renders</strong>, time to interactive, screen changes, crashes</td>
+              <td>one import</td>
+            </tr>
+            <tr>
+              <td><span class="src" style="--bar: var(--m-ui)">Native frame module</span></td>
+              <td><strong>UI-thread FPS, frame intervals p50/p95/p99, jank&nbsp;% against the display's real refresh rate</strong>; physical footprint on iOS, Java and native heap on Android</td>
+              <td>a rebuild</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="note">
+        <p>
+          <b>You can start with nothing installed in your app.</b> On Android, <code>adb</code> alone gives you
+          CPU, every memory pool and real frame timings. The SDK is what adds <em>attribution</em> — which
+          component, which screen, which file.
+        </p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="quickstart">
+      <h2>Quickstart</h2>
+      <p class="standfirst">From a clean checkout to a first recording.</p>
+
+      <ol class="steps">
+        <li>
+          <h3>Install the monitor</h3>
+          <p>Node 20.11 or newer. The repo is an npm workspace, so one install covers every package.</p>
+          <div class="code" data-lang="bash">
+            <pre><code><span class="pr">$</span> git clone https://github.com/VaheSaroyan/react-native-performance-monitor.git
+<span class="pr">$</span> cd react-native-performance-monitor
+<span class="pr">$</span> npm install
+<span class="pr">$</span> npm run build</code></pre>
+          </div>
+          <p>
+            Or skip the checkout entirely and take the signed <code>.dmg</code> from the
+            <a href="https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest">latest release</a>.
+          </p>
+        </li>
+
+        <li>
+          <h3>Open the app</h3>
+          <div class="code" data-lang="bash">
+            <pre><code><span class="pr">$</span> npm run desktop</code></pre>
+          </div>
+          <p>
+            Your devices appear in the sidebar — booted simulators, running emulators, anything on
+            <code>adb devices</code>, and paired iPhones. Pick one.
+          </p>
+        </li>
+
+        <li>
+          <h3>Choose the app under test</h3>
+          <p>
+            Type into the filter above the picker. A real iPhone lists upwards of 200 apps, three quarters
+            of them <code>com.apple.*</code> services, so the list is split: yours first, platform services
+            grouped underneath. Nothing is preselected unless one of <em>your</em> apps is already running.
+          </p>
+        </li>
+
+        <li>
+          <h3>Record, exercise, stop</h3>
+          <p>
+            Press <strong>Start recording</strong>, drive the screen you care about for at least 30 seconds, then
+            stop. Short recordings mislead — see <a href="#limits">Limits</a>.
+          </p>
+        </li>
+
+        <li>
+          <h3>Read the findings</h3>
+          <p>
+            The Findings tab opens first and ranks what it found, each with the evidence behind it and,
+            where the SDK was reporting, the component and source file to change.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="desktop">
+      <h2>The desktop app</h2>
+
+      <h3>Install a release</h3>
+      <p>
+        Download <code>RN Performance Monitor-&lt;version&gt;-arm64.dmg</code>, open it and drag the app to
+        Applications. Builds are signed with a Developer ID.
+      </p>
+      <div class="note note-warn">
+        <p>
+          <b>If the release was not notarised</b>, macOS refuses it on a machine other than the one that
+          built it: <code>source=Unnotarized Developer ID</code>. Clear the quarantine flag yourself:
+        </p>
+        <div class="code" data-lang="bash">
+          <pre><code><span class="pr">$</span> xattr -dr com.apple.quarantine <span class="st">"/Applications/RN Performance Monitor.app"</span></code></pre>
+        </div>
+      </div>
+
+      <h3>Build it yourself</h3>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> npm run build                       <span class="cm"># every package</span>
+<span class="pr">$</span> npm -w @rnperf/desktop run package   <span class="cm"># → apps/desktop/release/*.dmg</span>
+<span class="pr">$</span> npm -w @rnperf/desktop run package:dir <span class="cm"># unpacked .app, skips the DMG</span></code></pre>
+      </div>
+      <p>
+        The main process is bundled with esbuild before packaging, so the daemon and its dependencies end
+        up <em>inside</em> the app and nothing is resolved at runtime. This is not an optimisation: npm
+        workspaces hoist those packages to the repo root as symlinks, and electron-builder cannot follow a
+        symlink into an app bundle.
+      </p>
+
+      <h3>Signing</h3>
+      <p>
+        Pass the certificate's common name only, with no <code>Developer ID Application:</code> prefix.
+      </p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> export CSC_NAME=<span class="st">"Your Name (TEAMID)"</span>
+<span class="pr">$</span> npm -w @rnperf/desktop run package</code></pre>
+      </div>
+      <p>
+        The app uses the hardened runtime, with entitlements in
+        <code>apps/desktop/build/entitlements.mac.plist</code>. Electron's JIT needs <code>allow-jit</code> and
+        <code>allow-unsigned-executable-memory</code>; the daemon shells out to <code>adb</code> and <code>xcrun</code>,
+        which needs <code>disable-library-validation</code>.
+      </p>
+      <p>
+        Signing alone is not enough to run on someone else's Mac. To notarise, set
+        <code>notarize</code> to true in the <code>build.mac</code> config and supply credentials:
+      </p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> export APPLE_ID=you@example.com
+<span class="pr">$</span> export APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
+<span class="pr">$</span> export APPLE_TEAM_ID=TEAMID
+<span class="pr">$</span> npm -w @rnperf/desktop run package</code></pre>
+      </div>
+      <p>
+        Generate the app-specific password at <code>appleid.apple.com</code> under App-Specific Passwords.
+        In CI this is all handled for you — see <a href="#releases">Releases and CI</a>.
+      </p>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="sdk">
+      <h2>The in-app SDK</h2>
+      <p class="standfirst">
+        <code>@rnperf/sdk</code> is what turns “this screen is janky” into “this component re-rendered
+        37 times a second, in <code>src/screens/Checkout.tsx:84</code>”.
+      </p>
+
+      <h3>Install</h3>
+      <p>Nothing is published to npm by default. Pick whichever route suits the consuming repo:</p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="cm"># A tarball — what the package would contain if published</span>
+<span class="pr">$</span> npm pack -w @rnperf/sdk              <span class="cm"># → rnperf-sdk-0.1.0.tgz</span>
+<span class="pr">$</span> npm install /path/to/rnperf-sdk-0.1.0.tgz
+
+<span class="cm"># Or straight from a path, for a repo you control</span>
+<span class="pr">$</span> npm install file:/path/to/react-native-performance-monitor/packages/rn-sdk
+
+<span class="pr">$</span> cd ios &amp;&amp; pod install              <span class="cm"># picks up the RNPerfSDK native module</span></code></pre>
+      </div>
+      <div class="note">
+        <p>
+          <b>npm cannot install a subdirectory of a git repository</b>, so a plain git dependency pointing at
+          this monorepo installs the repo root, not the SDK. If CI machines need it, publish the tarball to
+          a registry or commit it into the consuming repo.
+        </p>
+      </div>
+
+      <h3>Start it</h3>
+      <div class="code" data-lang="ts">
+        <div class="code-head">index.js — before registering the root component</div>
+        <pre><code><span class="kw">import</span> { startPerfMonitor } <span class="kw">from</span> <span class="st">'@rnperf/sdk'</span>;
+
+startPerfMonitor();   <span class="cm">// host is derived from the Metro bundle URL</span></code></pre>
+      </div>
+      <p>
+        It is a <strong>no-op in release builds</strong> unless you pass <code>enableInRelease: true</code>, and the
+        transport fails silently with backoff when no daemon is listening — so leaving the call in costs
+        nothing when you are not profiling.
+      </p>
+
+      <h4>Options</h4>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Option</th><th>Default</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>host</code></td><td><code>'auto'</code></td><td>Where the daemon is. Derived from Metro's address; pass an IP when you are not using Metro</td></tr>
+            <tr><td><code>appName</code></td><td>—</td><td>Labels the session in the sidebar</td></tr>
+            <tr><td><code>bundleId</code></td><td>—</td><td>Lets the daemon pair SDK data with host-side samples for the same process</td></tr>
+            <tr><td><code>appVersion</code></td><td>—</td><td>Recorded with the session, so a diff knows which build it compared</td></tr>
+            <tr><td><code>enableInRelease</code></td><td><code>false</code></td><td>Run outside <code>__DEV__</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h4>Better attribution</h4>
+      <div class="code" data-lang="ts">
+        <pre><code><span class="kw">import</span> { setScreen, reportTTI, createNavigationTracker } <span class="kw">from</span> <span class="st">'@rnperf/sdk'</span>;
+
+<span class="cm">// React Navigation</span>
+&lt;NavigationContainer onStateChange={createNavigationTracker(() =&gt; navigationRef.getCurrentRoute()?.name)}&gt;
+
+<span class="cm">// or by hand</span>
+setScreen(<span class="st">'Checkout'</span>);
+reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></pre>
+      </div>
+
+      <h3>UI-thread frames</h3>
+      <p>
+        The SDK ships a native module for both platforms — <code>CADisplayLink</code> on iOS,
+        <code>Choreographer</code> on Android. Autolinking finds it; iOS needs <code>pod install</code>, Android
+        just a rebuild.
+      </p>
+      <p>
+        Frames are counted natively and drained once per reporting interval, because a bridge event per
+        frame would cause the very jank it is meant to measure. Jank is judged against the display's actual
+        budget — <span class="thresh">8.3ms</span> on ProMotion, <span class="thresh">11.1ms</span> at 90Hz —
+        never a hardcoded 16.7.
+      </p>
+      <div class="note note-warn">
+        <p>
+          <b>Expo Go cannot load the native module.</b> Use a development build
+          (<code>npx expo prebuild</code>). The JavaScript half of the SDK works in Expo Go either way.
+        </p>
+      </div>
+      <p>
+        On iOS this is the only way to get UI FPS at all — nothing outside the process can read it. On
+        Android it covers the case <code>adb</code> cannot reach: a device on Wi-Fi, a tester's phone, CI.
+        When a cable <em>is</em> attached, device-side values win, because <code>dumpsys</code> sees the whole
+        render pipeline.
+      </p>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="agent">
+      <h2>Claude Code and MCP</h2>
+      <p class="standfirst">
+        The point of the analysis is that something can act on it. The MCP server exposes every session,
+        metric and finding to a coding agent.
+      </p>
+
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> claude mcp add rnperf -- node /absolute/path/to/packages/mcp-server/dist/index.js</code></pre>
+      </div>
+      <p>Then ask for what you want:</p>
+      <div class="note">
+        <p>Profile the checkout screen on the emulator and fix whatever is making it janky.</p>
+      </div>
+      <p>
+        Claude calls <code>list_devices</code>, then <code>start_session</code>, waits while you drive the app,
+        calls <code>stop_session</code>, reads the findings, opens the files they point at and makes the edits.
+        Ask it to verify and it records a second session and calls <code>diff_sessions</code>.
+      </p>
+      <p>
+        The server starts its own daemon when the desktop app is not running, so the agent workflow needs
+        nothing else open.
+      </p>
+
+      <h3>Sending it to a teammate</h3>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> npm -w @rnperf/mcp-server run bundle   <span class="cm"># → packages/mcp-server/bundle/rnperf-mcp.mjs</span></code></pre>
+      </div>
+      <p>
+        One self-contained file with the daemon and every dependency inside it. The recipient needs nothing
+        but Node, and it is attached to every release.
+      </p>
+
+      <h3>Tools</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tool</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>list_devices</code></td><td>Every device, and what each one can measure</td></tr>
+            <tr><td><code>list_apps</code> / <code>launch_app</code></td><td>Find and start the app under test</td></tr>
+            <tr><td><code>start_session</code> / <code>stop_session</code></td><td>Record a window of activity</td></tr>
+            <tr><td><code>get_findings</code></td><td><strong>Ranked problems with evidence, source files and fixes</strong></td></tr>
+            <tr><td><code>get_session_summary</code></td><td>p50, p95, min, max and a per-minute trend for every metric</td></tr>
+            <tr><td><code>get_metrics</code></td><td>Raw samples, for pinpointing one spike</td></tr>
+            <tr><td><code>diff_sessions</code></td><td>Before and after — did the fix work?</td></tr>
+            <tr><td><code>get_logs</code></td><td>Logs, crashes, screen changes, TTI marks</td></tr>
+            <tr><td><code>locate_component</code></td><td>Resolve a component name to a file and line</td></tr>
+            <tr><td><code>set_project_root</code></td><td>Point the daemon at your RN project</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note note-bad">
+        <p>
+          <b>Set a real project root.</b> Component lookup ripgreps it. Point it at a home directory and
+          every findings request hangs, which is why <code>/</code>, <code>$HOME</code> and one-level-deep
+          paths are rejected outright.
+        </p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="findings">
+      <h2>What it looks for</h2>
+      <p class="standfirst">
+        Each finding carries the evidence that produced it. Where the SDK was reporting, it also carries the
+        component and the file.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Finding</th><th>Fires when</th><th>Points at</th></tr></thead>
+          <tbody>
+            <tr><td><code>js-fps-low</code></td><td>JS FPS p05 below <span class="thresh">45</span></td><td>the worst screen</td></tr>
+            <tr><td><code>js-thread-stall</code></td><td>A synchronous block over <span class="thresh">100ms</span></td><td>the worst screen</td></tr>
+            <tr><td><code>ui-jank</code></td><td>Over <span class="thresh">10%</span> of frames miss the refresh budget</td><td>—</td></tr>
+            <tr><td><code>memory-growth</code></td><td>A steady climb: <span class="thresh">&gt;2MB/min</span>, R² <span class="thresh">&gt;0.75</span>, <span class="thresh">&gt;5MB</span> total, over at least <span class="thresh">45s</span></td><td>which pool</td></tr>
+            <tr><td><code>render-storm</code></td><td>A component re-rendering <span class="thresh">&gt;15×/s</span></td><td>the component and file</td></tr>
+            <tr><td><code>large-list-unvirtualised</code></td><td>Many cheap renders of one component</td><td>the component and file</td></tr>
+            <tr><td><code>expensive-render</code></td><td>A single render over <span class="thresh">8ms</span> on average</td><td>the component and file</td></tr>
+            <tr><td><code>high-cpu</code></td><td>CPU p95 above <span class="thresh">85%</span> of a core</td><td>the JS thread, if it is the cause</td></tr>
+            <tr><td><code>slow-startup</code></td><td>TTI over <span class="thresh">2s</span></td><td>the screen</td></tr>
+            <tr><td><code>bridge-chatter</code></td><td>Over <span class="thresh">400</span> bridge calls/s</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Why memory growth needs a window</h3>
+      <p>
+        Growth is judged by the <strong>fit</strong> of the trend, not just its slope, so a GC sawtooth is not
+        reported as a leak while a steady climb is. It also needs at least 45 seconds and a rise of at least
+        5MB: every app allocates while it warms up, and a ten-second window of that produces a textbook
+        straight line, R² of 1, and a confident finding that means nothing. The projection in the evidence
+        never extrapolates further ahead than the recording reaches back.
+      </p>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="cli">
+      <h2>Terminal</h2>
+      <p>Everything the desktop app does is also a command.</p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> node packages/daemon/dist/cli.js devices
+<span class="pr">$</span> node packages/daemon/dist/cli.js record emulator-5554 \
+      --app com.example.app --seconds 30</code></pre>
+      </div>
+      <p>
+        Sessions are written as JSONL under <code>~/.rnperf/sessions/&lt;id&gt;/</code>, so a recording survives
+        the app that made it and can be re-read by the MCP server later.
+      </p>
+      <div class="note">
+        <p>
+          <b>The daemon's port is 8139</b>, not 8787. It walks 8139–8148 when a port is taken and advertises
+          whichever it bound in <code>~/.rnperf/daemon.json</code>, which is how the desktop app, the CLI and
+          the MCP server find each other.
+        </p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="releases">
+      <h2>Releases and CI</h2>
+      <p class="standfirst">
+        Three workflows in <code>.github/workflows/</code>. Everything they need beyond a checkout is listed
+        below; with no secrets configured at all, they still run and produce an unsigned build.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Workflow</th><th>Runs on</th><th>Does</th></tr></thead>
+          <tbody>
+            <tr><td><code>ci.yml</code></td><td>pushes and pull requests</td><td>Typechecks, builds every package, bundles the MCP server, packs the SDK, and packages an unsigned <code>.app</code> on macOS</td></tr>
+            <tr><td><code>release.yml</code></td><td>a <code>v*</code> tag, or by hand</td><td>Builds, signs, notarises, and publishes the DMG, the MCP bundle, the SDK tarball and checksums to a GitHub Release</td></tr>
+            <tr><td><code>docs.yml</code></td><td>pushes that touch <code>docs/</code></td><td>Publishes this page to GitHub Pages</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Cutting a release</h3>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> npm version 0.2.0 --workspaces --include-workspace-root --no-git-tag-version
+<span class="pr">$</span> git commit -am <span class="st">"Release 0.2.0"</span>
+<span class="pr">$</span> git tag v0.2.0 &amp;&amp; git push origin main --tags</code></pre>
+      </div>
+      <p>
+        The workflow refuses to run if the tag and <code>apps/desktop/package.json</code> disagree —
+        electron-builder names the DMG from the package version, and a mismatch ships an asset whose
+        filename contradicts the release it is attached to.
+      </p>
+
+      <h3>Secrets</h3>
+      <p>Every one of these is optional. Each missing group degrades one step rather than failing the run.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Secret</th><th>Effect when absent</th></tr></thead>
+          <tbody>
+            <tr><td><code>MACOS_CERTIFICATE_P12</code><br><code>MACOS_CERTIFICATE_PASSWORD</code></td><td>The DMG is built unsigned, and the release notes say so</td></tr>
+            <tr><td><code>APPLE_ID</code><br><code>APPLE_APP_SPECIFIC_PASSWORD</code><br><code>APPLE_TEAM_ID</code></td><td>Signed but not notarised — recipients must clear the quarantine flag</td></tr>
+            <tr><td><code>NPM_TOKEN</code></td><td>The SDK is attached to the release as a tarball but not published to npm</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        The certificate is a base64 of the exported <code>.p12</code>. Export it from Keychain Access
+        (<em>Developer ID Application</em>, with its private key), then:
+      </p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> base64 -i certificate.p12 | pbcopy   <span class="cm"># paste as MACOS_CERTIFICATE_P12</span></code></pre>
+      </div>
+      <div class="note note-warn">
+        <p>
+          <b>Notarisation adds several minutes</b> to the job while Apple's service processes the upload, and
+          it will fail the release if the credentials are wrong rather than shipping something Gatekeeper
+          blocks. That is deliberate: a release that quietly cannot be opened is worse than no release.
+        </p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="limits">
+      <h2>Limits worth knowing</h2>
+      <ul>
+        <li>
+          <strong>Android frame timings need HWUI profiling</strong>, which the daemon turns on for you. The
+          property only applies to processes started afterwards, so <strong>restart the app once</strong> to get
+          p95 and p99 frame times instead of aggregates.
+        </li>
+        <li>
+          <strong>iOS UI-thread frames come from the in-app module</strong>, never from the host. Nothing
+          outside the process can read them.
+        </li>
+        <li>
+          <strong><code>gfxinfo</code> jank and in-app jank are not the same measure.</strong> Android's
+          <code>gfxinfo</code> counts frames whose total latency exceeded the budget; both native modules count
+          refreshes actually missed. Compare <code>uiFps</code> when crossing sources or platforms.
+        </li>
+        <li>
+          <strong>The Android native module needs React Native 0.71+.</strong> The JavaScript half works from
+          0.70.
+        </li>
+        <li>
+          <strong>Physical iOS devices are sampled by <code>xctrace</code> in ~10s windows</strong>, so host-side
+          CPU and memory lag behind. On real hardware the SDK is the better source, and with the native
+          module it reports physical footprint every second — leaving <code>xctrace</code> needed only for CPU.
+        </li>
+        <li>
+          <strong>Simulator memory is host memory.</strong> It runs higher than the same build on a device. Use
+          it for trends, not absolute budgets.
+        </li>
+        <li>
+          <strong>Render tracking needs a dev build</strong> — React only records timings in its profiling
+          build.
+        </li>
+        <li>
+          <strong>Dev bundles run much hotter than release.</strong> Compare like for like, and never quote a
+          dev number as a shipping one.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ------------------------------------------------------------- -->
+    <section id="architecture">
+      <h2>How it fits together</h2>
+      <div class="code">
+        <pre><code>┌──────────────┐   ws/http    ┌─────────────────┐   stdio/MCP   ┌─────────────┐
+│ Desktop app  │◄────────────►│                 │◄─────────────►│ Claude Code │
+│ (Electron)   │              │  rnperf daemon  │               │   / agent   │
+└──────────────┘              │                 │               └─────────────┘
+                              │  collectors +   │
+┌──────────────┐   ws ingest  │  analysis       │     adb       ┌─────────────┐
+│ @rnperf/sdk  │─────────────►│                 │◄─────────────►│  devices    │
+│ (in the app) │              └─────────────────┘  simctl/ps    │             │
+└──────────────┘                                   devicectl    └─────────────┘</code></pre>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Package</th><th>Contains</th></tr></thead>
+          <tbody>
+            <tr><td><code>packages/protocol</code></td><td>Shared wire types</td></tr>
+            <tr><td><code>packages/daemon</code></td><td>Collectors, the session engine, analysis, the HTTP and WS API, the CLI</td></tr>
+            <tr><td><code>packages/rn-sdk</code></td><td><code>@rnperf/sdk</code> — the in-app probe, with the iOS and Android native modules</td></tr>
+            <tr><td><code>packages/mcp-server</code></td><td>The MCP bridge for Claude Code</td></tr>
+            <tr><td><code>apps/desktop</code></td><td>Electron and React</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p>
+        Collectors poll in the background and <code>tick()</code> returns a cache. An inline <code>adb shell</code>
+        call takes anywhere from 500ms to several seconds and would starve the whole sample loop — including
+        the SDK data that needs no device access at all. Each collector also has a deadline per tick as a
+        backstop.
+      </p>
+    </section>
+
+  </article>
+</div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <span>React Native Performance Monitor — MIT</span>
+    <a href="https://github.com/VaheSaroyan/react-native-performance-monitor">Source</a>
+    <a href="https://github.com/VaheSaroyan/react-native-performance-monitor/releases">Releases</a>
+    <a href="https://github.com/VaheSaroyan/react-native-performance-monitor/issues">Issues</a>
+    <span class="sep">Measured, not guessed.</span>
+  </div>
+</footer>
+
+<script src="assets/docs.js"></script>
+</body>
+</html>

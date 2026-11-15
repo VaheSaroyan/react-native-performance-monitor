@@ -5,6 +5,11 @@
   "description": "Measure React Native app performance on devices, simulators and emulators",
   "author": "rnperf",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VaheSaroyan/react-native-performance-monitor.git",
+    "directory": "apps/desktop"
+  },
   "main": "out/main.mjs",
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"wait-on tcp:5273 && RNPERF_DEV=1 electron .\"",
@@ -36,6 +41,7 @@
     "appId": "dev.rnperf.monitor",
     "productName": "RN Performance Monitor",
     "electronVersion": "33.4.11",
+    "artifactName": "RN-Performance-Monitor-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
     },

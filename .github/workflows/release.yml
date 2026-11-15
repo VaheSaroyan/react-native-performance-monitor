@@ -1,0 +1,242 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      note:
+        description: 'Why you are running a rehearsal (recorded in the run summary)'
+        required: false
+        default: 'Rehearsal — builds everything, publishes nothing'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign and publish
+    runs-on: macos-14
+    env:
+      # A tag push publishes. Anything else builds the same artifacts and
+      # leaves them on the run, so the pipeline can be rehearsed without
+      # spending a version number on it.
+      PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the release notes need the previous tag
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Resolve the version
+        id: version
+        run: |
+          version=$(node -p "require('./apps/desktop/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$PUBLISH" = "true" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$version" ]; then
+              echo "::error::tag v$tag does not match apps/desktop/package.json ($version)."
+              echo "::error::electron-builder names the DMG from the package version, so the asset would contradict the release it is attached to."
+              exit 1
+            fi
+            previous=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo '')
+            echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Building $version" >> "$GITHUB_STEP_SUMMARY"
+
+      # Which of the three optional credential groups are present decides how
+      # far the build gets. None of them is required: a run with no secrets
+      # at all still produces an installable (if unsigned) DMG.
+      - name: Work out what we are allowed to do
+        id: caps
+        run: |
+          echo "sign=${{ secrets.MACOS_CERTIFICATE_P12 != '' }}" >> "$GITHUB_OUTPUT"
+          echo "notarize=${{ secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}" >> "$GITHUB_OUTPUT"
+          echo "npm=${{ secrets.NPM_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+
+      - run: npm run build
+
+      # A keychain of its own, with a password nobody chose and nothing else
+      # in it. It dies with the runner.
+      - name: Import the Developer ID certificate
+        if: steps.caps.outputs.sign == 'true'
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password=$(uuidgen)
+          cert="$RUNNER_TEMP/certificate.p12"
+
+          echo "$CERT_P12" | base64 --decode > "$cert"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$cert" -k "$keychain" -P "$CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          # Without this, codesign stops to ask for the keychain password and
+          # the job hangs until it is cancelled.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychain -d user -s "$keychain" login.keychain-db
+          rm -f "$cert"
+
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          if [ -z "$identity" ]; then
+            echo "::error::the .p12 imported but holds no Developer ID Application identity"
+            security find-identity -v -p codesigning "$keychain"
+            exit 1
+          fi
+          echo "Signing as $identity"
+          {
+            echo "CSC_KEYCHAIN=$keychain"
+            echo "CSC_NAME=${identity#Developer ID Application: }"
+          } >> "$GITHUB_ENV"
+
+      - name: Build the DMG
+        env:
+          # electron-builder discovers an identity from the keychain when it
+          # may sign, and must be told explicitly not to look when it may not.
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ steps.caps.outputs.sign }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          npm -w @rnperf/desktop run package -- \
+            --publish never \
+            -c.mac.notarize=${{ steps.caps.outputs.notarize }}
+
+      # Checking after the fact rather than trusting the build log: an
+      # unopenable release is worse than a late one.
+      - name: Verify the signature
+        run: |
+          app="apps/desktop/release/mac-arm64/RN Performance Monitor.app"
+          test -d "$app" || { echo "::error::no app bundle at $app"; exit 1; }
+
+          if [ "${{ steps.caps.outputs.sign }}" = "true" ]; then
+            codesign --verify --deep --strict --verbose=2 "$app"
+            codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Authority|TeamIdentifier|Runtime'
+          else
+            echo "Unsigned build — skipping signature checks."
+          fi
+
+          if [ "${{ steps.caps.outputs.notarize }}" = "true" ]; then
+            # The ticket is what lets a downloaded copy open offline. If it is
+            # not stapled, the notarisation did not really land.
+            xcrun stapler validate "$app"
+            spctl -a -vvv -t install "$app"
+          elif [ "${{ steps.caps.outputs.sign }}" = "true" ]; then
+            echo "Signed but not notarised — Gatekeeper will refuse this on another Mac."
+          fi
+
+      - name: Bundle the MCP server
+        run: npm -w @rnperf/mcp-server run bundle
+
+      - name: Collect the artifacts
+        id: artifacts
+        run: |
+          out="$RUNNER_TEMP/artifacts"
+          mkdir -p "$out"
+          cp apps/desktop/release/*.dmg "$out/"
+          cp packages/mcp-server/bundle/rnperf-mcp.mjs "$out/"
+          npm pack -w @rnperf/sdk --pack-destination "$out"
+          # Listed by extension rather than with a bare *, so the checksum file
+          # can never end up trying to describe itself.
+          cd "$out" && shasum -a 256 ./*.dmg ./*.mjs ./*.tgz > SHA256SUMS.txt
+          ls -lh "$out"
+          echo "dir=$out" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rnperf-${{ steps.version.outputs.version }}
+          path: ${{ steps.artifacts.outputs.dir }}
+          if-no-files-found: error
+
+      - name: Write the release notes
+        if: env.PUBLISH == 'true'
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          previous="${{ steps.version.outputs.previous }}"
+          repo="${{ github.repository }}"
+
+          {
+            echo "## Install"
+            echo
+            echo "Download the DMG, open it, drag the app to Applications."
+            echo
+            if [ "${{ steps.caps.outputs.notarize }}" != "true" ]; then
+              echo "> [!IMPORTANT]"
+              if [ "${{ steps.caps.outputs.sign }}" = "true" ]; then
+                echo "> This build is signed with a Developer ID but **not notarised**, so Gatekeeper"
+                echo "> refuses it on a machine other than the one that built it. Clear the quarantine"
+                echo "> flag after installing:"
+              else
+                echo "> This build is **unsigned**. Clear the quarantine flag after installing:"
+              fi
+              echo '>'
+              echo '> ```bash'
+              echo '> xattr -dr com.apple.quarantine "/Applications/RN Performance Monitor.app"'
+              echo '> ```'
+              echo
+            fi
+            echo "### For a coding agent"
+            echo
+            echo '```bash'
+            echo "claude mcp add rnperf -- node /path/to/rnperf-mcp.mjs"
+            echo '```'
+            echo
+            echo "\`rnperf-mcp.mjs\` is self-contained — the daemon and every dependency are inside it,"
+            echo "and it starts its own daemon when the desktop app is not running. Node is the only requirement."
+            echo
+            echo "### For your React Native app"
+            echo
+            echo '```bash'
+            echo "npm install ./rnperf-sdk-$version.tgz"
+            echo "cd ios && pod install"
+            echo '```'
+            echo
+            echo "Verify a download against \`SHA256SUMS.txt\`:"
+            echo
+            echo '```bash'
+            echo "shasum -a 256 -c SHA256SUMS.txt"
+            echo '```'
+            echo
+            echo "Full documentation: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+            echo
+            if [ -n "$previous" ]; then
+              echo "**Changes:** https://github.com/$repo/compare/$previous...v$version"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+
+          cat "$RUNNER_TEMP/notes.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish the release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag \
+            "${{ steps.artifacts.outputs.dir }}"/*
+
+      # Opt-in, and deliberately last: nothing above depends on it, and an npm
+      # publish is the one step here that cannot be taken back.
+      - name: Publish @rnperf/sdk to npm
+        if: env.PUBLISH == 'true' && steps.caps.outputs.npm == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
+          npm publish -w @rnperf/sdk --access public

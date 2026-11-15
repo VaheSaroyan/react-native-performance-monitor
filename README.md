@@ -29,6 +29,9 @@ over **MCP** so Claude Code (or any coding agent) can read the analysis and appl
 The two halves merge into a single timeline, so a memory climb from `adb` sits on the
 same chart as the component that was re-rendering while it happened.
 
+**Documentation:** <https://vahesaroyan.github.io/react-native-performance-monitor/>
+· **Download:** [latest release](https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest)
+
 ## Install
 
 ```bash
@@ -58,9 +61,10 @@ The main process is bundled with esbuild before packaging, so the daemon and its
 end up inside the app and nothing is resolved at runtime — npm workspaces hoist those packages
 to the repo root as symlinks, which electron-builder cannot follow into an app bundle.
 
-The build is **unsigned** (`identity: null` in the `build.mac` config), which is fine for a local
-developer tool: macOS will ask for confirmation on first launch. To sign and notarise, remove
-`identity` and `notarize` from that config and set `CSC_NAME` plus the notarisation credentials.
+electron-builder signs with whatever Developer ID it finds in the keychain, so a build on a machine
+that has one is signed; set `CSC_IDENTITY_AUTO_DISCOVERY=false` for a deliberately unsigned build.
+Notarisation is off (`notarize: false` in `build.mac`) and has to be turned on explicitly — see
+[Giving it to other developers](#giving-it-to-other-developers), or let CI do it.
 
 Use `npm -w @rnperf/desktop run package:dir` for an unpacked `.app` while iterating — it skips
 building the DMG.
@@ -272,6 +276,39 @@ further ahead than the recording reaches back.
   for trends, not absolute budgets.
 - **Render tracking needs a dev build** — React only records timings in its profiling build.
 - Dev bundles run much hotter than release. Compare like for like.
+
+## Releasing
+
+Three workflows in `.github/workflows/`:
+
+| Workflow | Runs on | Does |
+|---|---|---|
+| `ci.yml` | pushes and pull requests | Typechecks, builds every package, speaks MCP to the bundled server over stdio, checks the SDK tarball still carries its native modules, and packages an unsigned `.app` on macOS |
+| `release.yml` | a `v*` tag, or by hand | Builds, signs, notarises and publishes the DMG, the MCP bundle, the SDK tarball and `SHA256SUMS.txt` to a GitHub Release |
+| `docs.yml` | pushes that touch `docs/` | Publishes the documentation site to GitHub Pages |
+
+```bash
+npm version 0.2.0 --workspaces --include-workspace-root --no-git-tag-version
+git commit -am "Release 0.2.0"
+git tag v0.2.0 && git push origin main --tags
+```
+
+The release job refuses to run when the tag and `apps/desktop/package.json` disagree —
+electron-builder names the DMG from the package version, so a mismatch would ship an asset whose
+filename contradicts the release it is attached to. Running the workflow by hand (rather than by
+tag) builds everything and publishes nothing, which is how to rehearse it.
+
+Every credential is optional and each missing group degrades one step instead of failing the run:
+
+| Secret | Effect when absent |
+|---|---|
+| `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD` | The DMG is built unsigned, and the release notes say so |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Signed but not notarised — recipients must clear the quarantine flag |
+| `NPM_TOKEN` | `@rnperf/sdk` is attached to the release as a tarball but not published to npm |
+
+The certificate is `base64 -i certificate.p12`, exported from Keychain Access with its private key.
+Notarisation, when enabled, is verified with `xcrun stapler validate` before the release is created:
+a build Gatekeeper would refuse fails the job rather than being published.
 
 ## Layout
 

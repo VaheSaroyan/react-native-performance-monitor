@@ -1,0 +1,353 @@
+/*
+ * Documentation for the React Native Performance Monitor.
+ *
+ * The site inherits the instrument's own organising idea: a frame budget is a
+ * threshold, and every measurement sits above or below it. Colour reports
+ * whether something is within budget, over it, or dropping frames — it is
+ * never spent on decoration. One accent (periwinkle) carries interaction only.
+ *
+ * Tokens below are the app's own, copied from apps/desktop/src/styles.css so
+ * the docs and the thing they document cannot drift apart visually.
+ */
+
+:root {
+  --bg: #14171c;
+  --deep: #101318;
+  --surface: #1b1f26;
+  --raised: #222730;
+  --line: #2b313c;
+  --line-soft: #232831;
+
+  --ink: #e8ebf0;
+  --ink-dim: #99a2b2;
+  /* The app's own --ink-faint is #68717f. On a web page it falls to 3.4:1
+     against the surfaces here — under AA, and this is the colour that carries
+     table headers, the frame-budget label and the caption under the readout.
+     Raised until the smallest text passes at 4.5:1 on every background. */
+  --ink-faint: #7d8796;
+
+  /* Measurement semantics */
+  --ok: #5bc8a5;
+  --warn: #e8a33d;
+  --bad: #e8604c;
+  --worst: #f0426a;
+
+  /* Interaction only */
+  --accent: #7c8cf8;
+  --accent-ink: #0d1030;
+
+  /* Metric identities, consistent with the app's charts */
+  --m-js: #7cc8f8;
+  --m-ui: #b49cff;
+  --m-cpu: #e8a33d;
+  --m-mem: #5bc8a5;
+  --m-heap: #f08cc0;
+
+  --sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  --r: 8px;
+
+  --rail: 228px;
+  --measure: 46rem;
+  --gutter: 24px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--accent); text-decoration-color: color-mix(in srgb, var(--accent) 38%, transparent); text-underline-offset: 3px; }
+a:hover { text-decoration-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+/* Numbers are read, not scanned. */
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------- top bar */
+
+.topbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; align-items: center; gap: 18px;
+  height: 52px; padding: 0 var(--gutter);
+  background: color-mix(in srgb, var(--deep) 86%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.wordmark {
+  display: flex; align-items: center; gap: 9px;
+  font-size: 14px; font-weight: 600; letter-spacing: -0.2px;
+  color: var(--ink); text-decoration: none; white-space: nowrap;
+}
+.wordmark .tick { width: 3px; height: 15px; border-radius: 2px; background: var(--accent); }
+.topbar nav { margin-left: auto; display: flex; align-items: center; gap: 20px; }
+.topbar nav a { font-size: 13.5px; color: var(--ink-dim); text-decoration: none; }
+.topbar nav a:hover { color: var(--ink); }
+.menu-toggle { display: none; }
+
+/* ---------------------------------------------------------------- hero */
+
+.hero {
+  background: var(--deep);
+  border-bottom: 1px solid var(--line);
+  padding: 58px var(--gutter) 0;
+}
+.hero-inner { max-width: 1120px; margin: 0 auto; }
+
+/* Headline and standfirst sit side by side and share a baseline, so the
+   trace below has something to be the width of rather than a void. */
+.hero-top { display: grid; grid-template-columns: 1.08fr 0.92fr; gap: 20px 56px; align-items: end; }
+
+.hero h1 {
+  font-size: clamp(2rem, 1.3rem + 2.6vw, 3.1rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.028em;
+  max-width: 17ch;
+}
+.hero .lede {
+  margin-top: 0;
+  max-width: 54ch;
+  font-size: 1.0625rem;
+  color: var(--ink-dim);
+}
+.hero .lede strong { color: var(--ink); font-weight: 500; }
+
+.hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--sans); font-size: 13.5px; font-weight: 500;
+  padding: 9px 16px; border-radius: var(--r);
+  border: 1px solid var(--line); background: var(--raised); color: var(--ink);
+  text-decoration: none; cursor: pointer;
+}
+.btn:hover { background: #272d38; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn-primary:hover { background: #8d9bff; }
+
+/* The trace: what the instrument actually shows you, drawn once on arrival. */
+.trace { margin-top: 38px; }
+.trace svg { display: block; width: 100%; height: auto; }
+.trace .over { stroke: var(--bad); }
+.trace .under { stroke: var(--ok); }
+.trace .budget { stroke: var(--ink-faint); stroke-dasharray: 3 4; }
+.trace .plot { animation: draw 1.7s cubic-bezier(0.22, 0.75, 0.3, 1) both; }
+@keyframes draw { from { stroke-dashoffset: 1200; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .trace .plot { animation: none; stroke-dashoffset: 0; } }
+
+.readout {
+  display: flex; flex-wrap: wrap; gap: 0 36px;
+  padding: 14px 0 44px;
+  border-top: 1px solid var(--line-soft);
+  margin-top: 10px;
+}
+.readout div { padding-top: 10px; }
+.readout dt { font-size: 12px; color: var(--ink-faint); }
+.readout dd {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 1.125rem; font-weight: 500; letter-spacing: -0.01em;
+}
+.readout dd small { font-size: 0.72em; color: var(--ink-faint); font-weight: 400; margin-left: 1px; }
+.readout .is-bad dd { color: var(--bad); }
+.readout .caption { flex: 1 1 22ch; min-width: 20ch; font-size: 12.5px; color: var(--ink-faint); line-height: 1.5; }
+
+/* --------------------------------------------------------------- shell */
+
+.shell {
+  max-width: 1120px; margin: 0 auto;
+  display: grid; grid-template-columns: var(--rail) minmax(0, 1fr);
+  gap: 48px;
+  padding: 0 var(--gutter);
+}
+
+.rail {
+  position: sticky; top: 52px; align-self: start;
+  max-height: calc(100vh - 52px); overflow-y: auto;
+  padding: 36px 0 48px;
+  font-size: 13.5px;
+}
+.rail h2 {
+  font-size: 12px; font-weight: 600; color: var(--ink-faint);
+  padding-bottom: 8px;
+}
+.rail ol { list-style: none; }
+.rail a {
+  display: block; padding: 5px 0 5px 12px;
+  color: var(--ink-dim); text-decoration: none;
+  border-left: 2px solid var(--line-soft);
+}
+.rail a:hover { color: var(--ink); border-left-color: var(--line); }
+.rail a[aria-current="true"] { color: var(--ink); border-left-color: var(--accent); }
+
+/* ------------------------------------------------------------ the doc */
+
+.doc { padding: 36px 0 96px; max-width: var(--measure); }
+.doc > section { padding-top: 22px; }
+.doc > section + section { margin-top: 52px; border-top: 1px solid var(--line-soft); }
+
+.doc h2 {
+  font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em;
+  line-height: 1.25; margin-bottom: 6px;
+}
+.doc h3 {
+  font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.012em;
+  margin: 34px 0 8px;
+}
+.doc h4 { font-size: 0.9375rem; font-weight: 600; margin: 24px 0 6px; color: var(--ink); }
+.doc p { margin: 12px 0; color: var(--ink-dim); }
+.doc p strong, .doc li strong { color: var(--ink); font-weight: 500; }
+.doc .standfirst { color: var(--ink-dim); font-size: 1.0625rem; margin-top: 2px; }
+
+.doc ul, .doc ol { margin: 12px 0 12px 20px; color: var(--ink-dim); }
+.doc li { margin: 6px 0; padding-left: 4px; }
+.doc li::marker { color: var(--ink-faint); }
+
+.doc code {
+  font-family: var(--mono); font-size: 0.86em;
+  background: var(--surface); border: 1px solid var(--line-soft);
+  border-radius: 4px; padding: 1px 5px; color: var(--ink);
+  overflow-wrap: break-word;
+}
+
+/* --------------------------------------------------------- code blocks */
+
+.code {
+  margin: 16px 0;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.code-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--line-soft);
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
+}
+.code pre { margin: 0; padding: 13px 14px; overflow-x: auto; }
+.code-head + pre { padding-top: 11px; }
+.code code {
+  background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.68;
+  color: var(--ink); white-space: pre;
+}
+.code .cm { color: var(--ink-faint); }      /* comment */
+.code .pr { color: var(--ok); }             /* shell prompt */
+.code .kw { color: var(--m-ui); }           /* keyword */
+.code .st { color: var(--m-js); }           /* string */
+
+/*
+ * The button lives in the block's header rather than floating over the code.
+ * Absolutely positioned, it sat on top of the first line — which on a long
+ * command is exactly the part you opened the page to read.
+ */
+.copy {
+  margin-left: auto; flex: none;
+  font-family: var(--mono); font-size: 11px;
+  padding: 3px 8px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--raised); color: var(--ink-dim);
+  cursor: pointer;
+}
+.copy:hover { color: var(--ink); background: #272d38; }
+.copy[data-done="true"] { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
+
+/* -------------------------------------------------------------- tables */
+
+.table-wrap { overflow-x: auto; margin: 18px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 32rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--line-soft); }
+th { font-size: 12px; font-weight: 600; color: var(--ink-faint); padding-bottom: 7px; border-bottom-color: var(--line); }
+td { color: var(--ink-dim); }
+td:first-child { color: var(--ink); font-weight: 500; white-space: nowrap; }
+td code { white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+
+/* A measurement's source is identified by its chart colour, the same one the app uses. */
+.src { display: inline-flex; align-items: center; gap: 8px; }
+.src::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--bar, var(--ink-faint)); flex: none; }
+
+.thresh { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13px; color: var(--ink); }
+
+/* --------------------------------------------------------------- notes */
+
+.note {
+  margin: 18px 0; padding: 13px 15px;
+  background: var(--surface); border: 1px solid var(--line);
+  border-left: 2px solid var(--edge, var(--accent));
+  border-radius: 0 var(--r) var(--r) 0;
+  font-size: 14px; color: var(--ink-dim);
+}
+.note p { margin: 0; color: inherit; font-size: inherit; }
+.note p + p { margin-top: 8px; }
+.note b { color: var(--ink); font-weight: 600; }
+.note-warn { --edge: var(--warn); }
+.note-bad { --edge: var(--bad); }
+
+/* Numbered sequence — used only where the content really is a sequence. */
+.steps { list-style: none; margin: 22px 0 0; counter-reset: step; }
+.steps > li { position: relative; padding: 0 0 4px 38px; margin: 0 0 26px; counter-increment: step; }
+.steps > li::before {
+  content: counter(step);
+  position: absolute; left: 0; top: 1px;
+  width: 24px; height: 24px; border-radius: 50%;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-dim);
+  background: var(--raised); border: 1px solid var(--line);
+}
+.steps h3 { margin: 0 0 4px; font-size: 1rem; }
+.steps p { margin: 4px 0; }
+
+/* -------------------------------------------------------------- footer */
+
+footer {
+  border-top: 1px solid var(--line);
+  background: var(--deep);
+  padding: 28px var(--gutter);
+}
+.footer-inner {
+  max-width: 1120px; margin: 0 auto;
+  display: flex; flex-wrap: wrap; gap: 8px 28px; align-items: baseline;
+  font-size: 13px; color: var(--ink-faint);
+}
+.footer-inner a { color: var(--ink-dim); text-decoration: none; }
+.footer-inner a:hover { color: var(--ink); }
+.footer-inner .sep { margin-left: auto; }
+
+/* ---------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  .hero-top { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .hero h1 { max-width: 20ch; }
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .rail {
+    position: static; max-height: none; padding: 18px 0 0;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .rail ol { columns: 2; column-gap: 24px; padding-bottom: 14px; }
+  .rail a { border-left: 0; padding-left: 0; }
+  .rail a[aria-current="true"] { color: var(--accent); }
+  .hero { padding-top: 40px; }
+  .trace { margin-top: 32px; }
+}
+
+@media (max-width: 620px) {
+  :root { --gutter: 16px; }
+  body { font-size: 15.5px; }
+  .wordmark { font-size: 13px; }
+  .topbar { gap: 12px; }
+  .topbar nav { gap: 15px; }
+  .topbar nav a.hide-sm { display: none; }
+  .rail ol { columns: 1; }
+  .readout { gap: 0 24px; }
+  /* The trace scales with the viewport, so at phone width a 1.8-unit stroke
+     lands under half a pixel and the spikes grey out. Thicken it in user
+     units — the shape is the message, not the line weight. */
+  .trace svg g { stroke-width: 3.4; }
+  .trace .budget { stroke-width: 2; }
+}
