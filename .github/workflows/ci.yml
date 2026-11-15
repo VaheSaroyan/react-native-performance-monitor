@@ -19,9 +19,9 @@ jobs:
     name: Typecheck and build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -81,11 +81,11 @@ jobs:
   # step needs a Mac even though nothing is signed here.
   package:
     name: Package the macOS app
-    runs-on: macos-14
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

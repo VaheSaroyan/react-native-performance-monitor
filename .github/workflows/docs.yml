@@ -28,7 +28,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Pages serves whatever it is handed, including a page whose stylesheet
       # 404s. Every local reference is checked before anything is uploaded.
@@ -52,11 +52,11 @@ jobs:
       # No `enablement: true` here: creating the Pages site needs admin, which
       # the workflow token does not have. Pages is set to build from Actions
       # once, out of band, and this step then just reads that configuration.
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

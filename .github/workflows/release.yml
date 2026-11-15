@@ -20,7 +20,7 @@ permissions:
 jobs:
   release:
     name: Build, sign and publish
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       # A tag push publishes. Anything else builds the same artifacts and
       # leaves them on the run, so the pipeline can be rehearsed without
@@ -28,11 +28,11 @@ jobs:
       PUBLISH: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the release notes need the previous tag
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -156,7 +156,7 @@ jobs:
           ls -lh "$out"
           echo "dir=$out" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rnperf-${{ steps.version.outputs.version }}
           path: ${{ steps.artifacts.outputs.dir }}
