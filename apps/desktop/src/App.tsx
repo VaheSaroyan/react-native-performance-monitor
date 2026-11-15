@@ -264,6 +264,24 @@ function Welcome({ projectRoot, onPickRoot }: { projectRoot: string | null; onPi
 
 /* ------------------------------------------------------------ device */
 
+/**
+ * Platform-owned apps, which are never the thing you want to profile and which
+ * outnumber your own: a real iPhone lists 74 `com.apple.*` services among 209
+ * installed apps, enough to bury the app you came for halfway down the list.
+ */
+function isSystemApp(bundleId: string, platform: string): boolean {
+  if (platform === 'ios') return bundleId.startsWith('com.apple.');
+  return /^(android$|com\.android\.|com\.google\.android\.|com\.samsung\.|com\.sec\.)/.test(bundleId);
+}
+
+function appOption(a: AppInfo) {
+  return (
+    <option key={a.bundleId} value={a.bundleId}>
+      {a.running ? 'Running — ' : ''}{a.name ? `${a.name} — ` : ''}{a.bundleId}
+    </option>
+  );
+}
+
 function DeviceView({
   device, onStart,
 }: {
@@ -272,20 +290,47 @@ function DeviceView({
 }) {
   const [apps, setApps] = useState<AppInfo[] | null>(null);
   const [bundleId, setBundleId] = useState<string>('');
+  const [filter, setFilter] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     setApps(null);
     setBundleId('');
+    setFilter('');
     if (device.state !== 'online') return;
     api.apps(device.id).then(({ apps: list }) => {
       setApps(list);
-      const running = list.find((a) => a.running);
+      // Only ever preselect a running app of the developer's own. On a real
+      // phone every running process is typically a platform service — Siri,
+      // SpringBoard, BluetoothUIService — and preselecting one of those aims
+      // the recording at something nobody asked to profile. Better to leave
+      // the choice empty and let the filter find the app.
+      const running = list.find((a) => a.running && !isSystemApp(a.bundleId, device.platform));
       if (running) setBundleId(running.bundleId);
     }).catch(() => setApps([]));
   }, [device.id, device.state]);
 
   const selected = apps?.find((a) => a.bundleId === bundleId);
+
+  const { kept, yours, system, matchCount } = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    const hit = (a: AppInfo) =>
+      !q || a.bundleId.toLowerCase().includes(q) || (a.name ?? '').toLowerCase().includes(q);
+    const listed = (apps ?? []).filter(hit);
+    const byRunningThenName = (a: AppInfo, b: AppInfo) =>
+      Number(b.running) - Number(a.running) ||
+      (a.name ?? a.bundleId).localeCompare(b.name ?? b.bundleId);
+    // A selection the filter excludes is shown on its own rather than dropped,
+    // so narrowing the list can never silently blank the control — and rather
+    // than inside a group it does not belong to, which would read as a match.
+    const kept = apps?.find((a) => a.bundleId === bundleId && !hit(a));
+    return {
+      kept,
+      yours: listed.filter((a) => !isSystemApp(a.bundleId, device.platform)).sort(byRunningThenName),
+      system: listed.filter((a) => isSystemApp(a.bundleId, device.platform)).sort(byRunningThenName),
+      matchCount: listed.length,
+    };
+  }, [apps, bundleId, filter, device.platform]);
 
   return (
     <>
@@ -315,12 +360,32 @@ function DeviceView({
           <label htmlFor="app-select">App to measure</label>
           <select id="app-select" value={bundleId} onChange={(e) => setBundleId(e.target.value)}>
             <option value="">None — SDK data only</option>
-            {(apps ?? []).map((a) => (
-              <option key={a.bundleId} value={a.bundleId}>
-                {a.running ? 'Running — ' : ''}{a.name ? `${a.name} — ` : ''}{a.bundleId}
-              </option>
-            ))}
+            {kept && <optgroup label="Selected">{appOption(kept)}</optgroup>}
+            {yours.length > 0 && (
+              <optgroup label={filter ? `Matching (${yours.length})` : 'Apps on this device'}>
+                {yours.map(appOption)}
+              </optgroup>
+            )}
+            {system.length > 0 && (
+              <optgroup label={`${device.platform === 'ios' ? 'Apple' : 'Platform'} system (${system.length})`}>
+                {system.map(appOption)}
+              </optgroup>
+            )}
           </select>
+          {apps !== null && apps.length > 0 && (
+            <input
+              type="search"
+              aria-label="Filter apps by name or bundle id"
+              placeholder={`Filter ${apps.length} apps`}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+            />
+          )}
+          {filter && matchCount === 0 && (
+            <span style={{ fontSize: 11.5, color: 'var(--ink-faint)' }}>
+              No app matches “{filter}”
+            </span>
+          )}
           {bundleId && !selected?.running && (
             <button onClick={() => api.launch(device.id, bundleId).catch(() => {})}>Launch it</button>
           )}
