@@ -37,7 +37,16 @@ class PerfMonitor {
 
     const host = options.host === 'auto' || !options.host ? inferHost() : options.host;
     if (!host) {
-      warn('could not infer the daemon host from the Metro bundle URL — pass `host` explicitly.');
+      // A release bundle is loaded from `assets://` or `file://`, so there is no
+      // Metro address to read. Forcing this one warning past the __DEV__ guard is
+      // the difference between a diagnosable mistake and a monitor that opted in
+      // to release and then said nothing at all.
+      warn(
+        dev
+          ? 'could not infer the daemon host from the Metro bundle URL — pass `host` explicitly.'
+          : "a release build has no Metro bundle URL to infer the daemon host from — pass it explicitly, e.g. startPerfMonitor({ enableInRelease: true, host: '192.168.1.5' }).",
+        !dev,
+      );
       return;
     }
 
@@ -80,7 +89,14 @@ class PerfMonitor {
       }
     }
     if (options.trackRenders !== false && !this.renders.install()) {
-      warn('component render tracking is unavailable — React had not initialised when the monitor started. Call startPerfMonitor() after importing your root component.');
+      // In release the hook is simply not there, and React's production renderer
+      // records no timings either — a different cause needing a different answer.
+      warn(
+        dev
+          ? 'component render tracking is unavailable — React had not initialised when the monitor started. Call startPerfMonitor() after importing your root component.'
+          : 'component render tracking is unavailable in a release build — React ships its production renderer, which records no render timings. Every other metric still reports.',
+        !dev,
+      );
     }
 
     const intervalMs = options.intervalMs ?? 1000;
@@ -241,7 +257,12 @@ const monitor = new PerfMonitor();
  * startPerfMonitor();            // host is derived from the Metro URL
  * ```
  *
- * In a release build it is a no-op unless `enableInRelease` is set.
+ * In a release build it is a no-op unless `enableInRelease` is set, and there
+ * `host` must be given explicitly — an embedded bundle carries no Metro URL:
+ *
+ * ```ts
+ * startPerfMonitor({ enableInRelease: true, host: '192.168.1.5' });
+ * ```
  */
 export function startPerfMonitor(options?: PerfMonitorOptions): void {
   monitor.start(options);
@@ -311,6 +332,6 @@ function formatVersion(v: { major?: number; minor?: number; patch?: number }): s
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-function warn(message: string): void {
-  if (global.__DEV__) console.warn(`[rnperf] ${message}`);
+function warn(message: string, force = false): void {
+  if (global.__DEV__ || force) console.warn(`[rnperf] ${message}`);
 }

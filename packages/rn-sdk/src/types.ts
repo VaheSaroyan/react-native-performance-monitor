@@ -43,7 +43,8 @@ export interface PerfMonitorOptions {
   /**
    * Daemon host. `'auto'` (the default) derives it from the Metro bundle URL,
    * which is correct for a simulator, an emulator and a real device on Wi-Fi
-   * without any configuration.
+   * without any configuration. A release build has no Metro URL, so with
+   * `enableInRelease` this must be set explicitly.
    */
   host?: string | 'auto';
   port?: number;
@@ -59,7 +60,11 @@ export interface PerfMonitorOptions {
   trackUiFrames?: boolean;
   /** Count native module calls crossing the bridge. Default true. */
   trackBridge?: boolean;
-  /** Report even in a release build. Default false — profiling has a cost. */
+  /**
+   * Report even in a release build. Default false — profiling has a cost.
+   * Requires an explicit `host`. Component renders are unavailable in release;
+   * frames, JS fps, stalls, memory, screens and marks all still report.
+   */
   enableInRelease?: boolean;
   /** Reported alongside samples so the daemon can match this app to a session. */
   bundleId?: string;
