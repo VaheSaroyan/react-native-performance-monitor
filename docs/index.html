@@ -171,8 +171,10 @@
 <span class="pr">$</span> npm run build</code></pre>
           </div>
           <p>
-            Or skip the checkout entirely and take the signed <code>.dmg</code> from the
+            Or skip the checkout entirely and take the <code>.dmg</code> from the
             <a href="https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest">latest release</a>.
+            Every release says in its own notes whether it was signed; an unsigned one needs the
+            quarantine flag cleared — <a href="#desktop">below</a>.
           </p>
         </li>
 
@@ -221,8 +223,13 @@
       <h3>Install a release</h3>
       <p>
         Download <code>RN-Performance-Monitor-&lt;version&gt;-arm64.dmg</code>, open it and drag the app to
-        Applications. Builds are signed with a Developer ID, and notarised when the release had the
-        credentials for it — see <a href="#desktop">Handing it to someone else</a>.
+        Applications.
+      </p>
+      <p>
+        A release is signed, and notarised, only when the workflow that built it had the credentials to do
+        so — the release notes state which, every time. <strong>Published builds are currently
+        unsigned</strong>, so expect to clear the quarantine flag below until the repository carries those
+        secrets. What it takes is in <a href="#desktop">Handing it to someone else</a>.
       </p>
       <div class="note note-warn">
         <p>
