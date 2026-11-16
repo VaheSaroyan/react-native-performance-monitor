@@ -1,7 +1,20 @@
 {
   "name": "@rnperf/sdk",
   "version": "0.1.0",
-  "description": "In-app performance probe for React Native \u2014 JS FPS, stalls, heap, component renders, and UI-thread frames via CADisplayLink on iOS",
+  "description": "In-app performance probe for React Native — JS FPS, stalls, heap, component renders, and UI-thread frames via CADisplayLink on iOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VaheSaroyan/react-native-performance-monitor.git",
+    "directory": "packages/rn-sdk"
+  },
+  "homepage": "https://vahesaroyan.github.io/react-native-performance-monitor/",
+  "bugs": {
+    "url": "https://github.com/VaheSaroyan/react-native-performance-monitor/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [

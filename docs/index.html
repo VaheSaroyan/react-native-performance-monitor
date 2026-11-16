@@ -285,22 +285,22 @@
       </p>
 
       <h3>Install</h3>
-      <p>Nothing is published to npm by default. Pick whichever route suits the consuming repo:</p>
       <div class="code" data-lang="bash">
-        <pre><code><span class="cm"># A tarball — what the package would contain if published</span>
-<span class="pr">$</span> npm pack -w @rnperf/sdk              <span class="cm"># → rnperf-sdk-0.1.0.tgz</span>
+        <pre><code><span class="pr">$</span> npm install @rnperf/sdk
+<span class="pr">$</span> cd ios &amp;&amp; pod install              <span class="cm"># picks up the RNPerfSDK native module</span></code></pre>
+      </div>
+      <p>To try a change to the SDK before it is released, install the tarball or the path instead:</p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> npm pack -w @rnperf/sdk              <span class="cm"># → rnperf-sdk-0.1.0.tgz</span>
 <span class="pr">$</span> npm install /path/to/rnperf-sdk-0.1.0.tgz
 
 <span class="cm"># Or straight from a path, for a repo you control</span>
-<span class="pr">$</span> npm install file:/path/to/react-native-performance-monitor/packages/rn-sdk
-
-<span class="pr">$</span> cd ios &amp;&amp; pod install              <span class="cm"># picks up the RNPerfSDK native module</span></code></pre>
+<span class="pr">$</span> npm install file:/path/to/react-native-performance-monitor/packages/rn-sdk</code></pre>
       </div>
       <div class="note">
         <p>
           <b>npm cannot install a subdirectory of a git repository</b>, so a plain git dependency pointing at
-          this monorepo installs the repo root, not the SDK. If CI machines need it, publish the tarball to
-          a registry or commit it into the consuming repo.
+          this monorepo installs the repo root, not the SDK. Use the published package, or the tarball.
         </p>
       </div>
 
@@ -527,7 +527,7 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
           <tbody>
             <tr><td><code>MACOS_CERTIFICATE_P12</code><br><code>MACOS_CERTIFICATE_PASSWORD</code></td><td>The DMG is built unsigned, and the release notes say so</td></tr>
             <tr><td><code>APPLE_ID</code><br><code>APPLE_APP_SPECIFIC_PASSWORD</code><br><code>APPLE_TEAM_ID</code></td><td>Signed but not notarised — recipients must clear the quarantine flag</td></tr>
-            <tr><td><code>NPM_TOKEN</code></td><td>The SDK is attached to the release as a tarball but not published to npm</td></tr>
+            <tr><td><code>NPM_TOKEN</code></td><td>The release still carries the SDK tarball, but that version is not published to npm</td></tr>
           </tbody>
         </table>
       </div>

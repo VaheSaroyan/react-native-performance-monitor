@@ -16,6 +16,9 @@ concurrency:
 
 permissions:
   contents: write
+  # Lets npm attest where the tarball came from. Without it the publish
+  # still works, but the package carries no provenance.
+  id-token: write
 
 jobs:
   release:
@@ -239,4 +242,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           echo "//registry.npmjs.org/:_authToken=\${NODE_AUTH_TOKEN}" > ~/.npmrc
-          npm publish -w @rnperf/sdk --access public
+          # --provenance signs a statement that this tarball was built by this
+          # workflow from this commit, which npm shows on the package page. It
+          # needs the id-token permission above and a public package.
+          npm publish -w @rnperf/sdk --access public --provenance

@@ -144,41 +144,34 @@ own.
 ### The SDK
 
 This one goes into another codebase, so it has to resolve on every machine that installs that
-project — including CI. A local path will not do that. In increasing order of effort:
+project — including CI. It is on npm, so that is one line:
 
-**npm cannot install a subdirectory of a git repository**, so a plain git dependency pointing at
-this monorepo installs the repo root, not the SDK. That leaves three workable routes:
+```bash
+npm install @rnperf/sdk
+```
 
-| Approach | Works in CI | Setup |
-|---|---|---|
-| Commit the tarball into the consuming repo | yes | none, but a binary blob in git |
-| Private registry — Azure Artifacts, GitHub Packages, npm org | yes | registry auth on every machine and in CI |
-| Split `packages/rn-sdk` into its own repo | yes | a second repo to keep in step |
-
-`npm pack -w @rnperf/sdk` produces the tarball for the first option. The package has a `prepare`
-script, so it also builds itself correctly if it is ever installed straight from a git URL.
+A local path resolves only on the machine that wrote it, and **npm cannot install a subdirectory
+of a git repository** — a plain git dependency pointing at this monorepo installs the repo root,
+not the SDK. To put an unreleased change in front of CI, `npm pack -w @rnperf/sdk` and commit or
+host the tarball. The package has a `prepare` script, so it also builds itself if it is ever
+installed straight from a git URL.
 
 ## Adding the SDK to your app
 
-You do **not** need to publish anything to npm. Pick whichever fits:
+```bash
+npm install @rnperf/sdk
+cd ios && pod install      # picks up the RNPerfSDK native module
+```
+
+To try a change to the SDK before it is released, install the tarball or the path instead — both
+carry the same native code:
 
 ```bash
-# A tarball — what the package would contain if published
 npm pack -w @rnperf/sdk                 # → rnperf-sdk-0.1.0.tgz
 npm install /path/to/rnperf-sdk-0.1.0.tgz
 
 # Or straight from a path, for a repo you control
 npm install file:/path/to/react-native-performance-monitor/packages/rn-sdk
-```
-
-Publish only when other people or CI machines need to install it without the source checkout.
-If you do, scope it to your org and mark it private, since this ships native code for both
-platforms.
-
-
-```bash
-npm install @rnperf/sdk    # or: npm install /path/to/packages/rn-sdk
-cd ios && pod install      # picks up the RNPerfSDK native module
 ```
 
 ```ts
@@ -304,7 +297,7 @@ Every credential is optional and each missing group degrades one step instead of
 |---|---|
 | `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD` | The DMG is built unsigned, and the release notes say so |
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Signed but not notarised — recipients must clear the quarantine flag |
-| `NPM_TOKEN` | `@rnperf/sdk` is attached to the release as a tarball but not published to npm |
+| `NPM_TOKEN` | The release still carries the SDK tarball, but that version is not published to npm |
 
 The certificate is `base64 -i certificate.p12`, exported from Keychain Access with its private key.
 Notarisation, when enabled, is verified with `xcrun stapler validate` before the release is created:
