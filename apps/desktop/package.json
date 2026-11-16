@@ -17,6 +17,7 @@
     "build:main": "node build-main.mjs",
     "start": "npm run build && electron .",
     "package": "npm run build && electron-builder --mac",
+    "package:notarized": "npm run build && electron-builder --mac -c.mac.notarize=true",
     "package:dir": "npm run build && electron-builder --mac --dir"
   },
   "dependencies": {

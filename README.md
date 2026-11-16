@@ -80,7 +80,13 @@ node packages/daemon/dist/cli.js record emulator-5554 --app com.example.app --se
 
 ```bash
 claude mcp add rnperf -- node /absolute/path/to/packages/mcp-server/dist/index.js
+claude mcp list     # rnperf: ... ✓ Connected
 ```
+
+Run that from the React Native project you want profiled, not from this repo: the registration is
+stored per directory, and the agent's working directory is what component names resolve against.
+`--scope project` writes it to that repo's `.mcp.json` instead, for the whole team. The path has
+to be absolute.
 
 Then just ask:
 
@@ -109,17 +115,36 @@ The app is signed with a Developer ID and the hardened runtime, with entitlement
 `disable-library-validation`.
 
 Signing alone is not enough for another Mac: Gatekeeper rejects a signed-but-unnotarised app
-(`source=Unnotarized Developer ID`). To notarise, set `notarize: true` in `build.mac` and supply
-credentials:
+(`source=Unnotarized Developer ID`). Notarising is what turns the handover into "double-click it"
+instead of "first, open a terminal". Three credentials, all from the account that issued the
+certificate:
 
 ```bash
+export CSC_NAME="Your Name (TEAMID)"
 export APPLE_ID=you@example.com
 export APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx   # appleid.apple.com → App-Specific Passwords
-export APPLE_TEAM_ID=TEAMID
-npm -w @rnperf/desktop run package
+export APPLE_TEAM_ID=TEAMID                              # the brackets after your certificate's name
+npm -w @rnperf/desktop run package:notarized
 ```
 
-Until then, a recipient can clear the quarantine flag themselves:
+`package:notarized` passes `-c.mac.notarize=true`, the same flag CI passes, so a hand-cut build and
+a tagged one produce the same artifact. The plain `package` script leaves it off, because enabling
+it without credentials fails the build rather than skipping quietly. electron-builder uploads,
+waits for Apple — several minutes, no output — and **staples** the ticket to the `.app` and the DMG,
+which is what lets the app open on a machine that is offline.
+
+Verify before sending, on the DMG rather than the app inside it:
+
+```bash
+xcrun stapler validate "apps/desktop/release/RN-Performance-Monitor-0.1.0-arm64.dmg"
+spctl -a -vvv -t install "apps/desktop/release/RN-Performance-Monitor-0.1.0-arm64.dmg"
+```
+
+`source=Notarized Developer ID` means anyone can open it. The build machine itself can't tell you
+— it opens either way — so test on another Mac, or fake the flag with
+`xattr -w com.apple.quarantine "0081;00000000;Safari;" <dmg>`.
+
+Until a build is notarised, a recipient can clear the quarantine flag themselves:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/RN Performance Monitor.app"
@@ -139,7 +164,8 @@ claude mcp add rnperf -- node /path/to/rnperf-mcp.mjs
 ```
 
 It starts its own daemon when the desktop app is not running, so the agent workflow works on its
-own.
+own. No signing or notarisation applies — a `.mjs` file run by Node is not a macOS application,
+and neither is an npm package. The DMG is the only artifact that needs notarising.
 
 ### The SDK
 
@@ -181,7 +207,8 @@ import { startPerfMonitor } from '@rnperf/sdk';
 startPerfMonitor();   // host is derived from the Metro bundle URL
 ```
 
-It is a **no-op in release builds** unless you pass `enableInRelease: true`.
+It is a **no-op in release builds** unless you pass `enableInRelease: true` — see
+[Profiling a release build](#profiling-a-release-build).
 
 Optional, for better attribution:
 
@@ -198,6 +225,41 @@ reportTTI('Checkout', Date.now() - startedAt);
 
 On a **physical device**, the SDK finds the daemon through Metro's address automatically.
 If you are not using Metro, pass it explicitly: `startPerfMonitor({ host: '192.168.1.5' })`.
+
+### Profiling a release build
+
+A dev bundle runs hot enough that its numbers are their own story. To measure what you actually
+ship, on a device you are holding:
+
+```ts
+startPerfMonitor({ enableInRelease: true, host: '192.168.1.5' });
+```
+
+`host` is **not optional here.** Auto-discovery reads Metro's address out of the bundle URL, and a
+release bundle loads from `assets://` or `file://` — there is no address in it. Pass your Mac's LAN
+address; the daemon already listens on every interface.
+
+| Metric | In a release build |
+|---|---|
+| UI-thread frames, jank, refresh rate | Identical — `CADisplayLink` and `Choreographer` are not gated on build type |
+| JS fps, stalls, JS heap, bridge calls | Work, and are the numbers worth quoting |
+| Memory footprint, screens, TTI, marks, crashes | Work |
+| **Component renders** | **Absent** |
+| Host-side CPU | Needs a cable and a development- or ad-hoc-signed build |
+
+Renders go for two independent reasons: React's commit hook, `__REACT_DEVTOOLS_GLOBAL_HOOK__`, is
+not installed in a release bundle, and React ships its production renderer, which records no
+timings to read even if it were. So `render-storm`, `expensive-render` and
+`large-list-unvirtualised` all disappear — on a typical session, most of the findings, and exactly
+the ones that name a file and line. Frame, stall and memory findings remain, and they are the ones
+a user would have felt. Profile in dev to locate a cause; re-record in release to confirm the fix
+on the build you ship.
+
+This is a release-*configuration* build on your own device, not field monitoring. A TestFlight or
+App Store build on someone else's phone cannot reach a daemon on your desk, and there is no hosted
+collector behind any of this. The SDK logs a missing host even in release, where it is otherwise
+silent — look for `[rnperf]` in the device log — and the session records `runtime.dev: false`, so a
+recording made this way is labelled for what it is.
 
 ### UI-thread frames
 
@@ -267,8 +329,15 @@ further ahead than the recording reaches back.
   reports physical footprint every second, so `xctrace` is only needed for CPU.
 - **Simulator memory is host memory** and runs higher than the same build on a device. Use it
   for trends, not absolute budgets.
-- **Render tracking needs a dev build** — React only records timings in its profiling build.
-- Dev bundles run much hotter than release. Compare like for like.
+- **Render tracking needs a dev build** — React only records timings in its profiling build, and a
+  release bundle installs no commit hook for it to report through. Frames, stalls and memory are
+  unaffected.
+- **A release build cannot find the daemon by itself** — an embedded bundle has no Metro URL, so
+  `host` must be passed explicitly.
+- Dev bundles run much hotter than release. Compare like for like; to measure the real thing, see
+  [Profiling a release build](#profiling-a-release-build).
+- **It profiles devices you hold, not users in the field.** Everything reports to a daemon on your
+  machine over the LAN.
 
 ## Releasing
 

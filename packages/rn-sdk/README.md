@@ -15,9 +15,9 @@ import { startPerfMonitor } from '@rnperf/sdk';
 startPerfMonitor();
 ```
 
-No-op in release builds unless `enableInRelease: true`. Everything it does is wrapped in
-try/catch — if the daemon is not running, or an internal React API has moved, the app
-behaves exactly as if the SDK were not installed.
+No-op in release builds unless `enableInRelease: true` (see [Release builds](#release-builds)).
+Everything it does is wrapped in try/catch — if the daemon is not running, or an internal React
+API has moved, the app behaves exactly as if the SDK were not installed.
 
 ## What it reports
 
@@ -30,6 +30,38 @@ behaves exactly as if the SDK were not installed.
 - **Bridge calls** — legacy bridge traffic, via MessageQueue's spy hook.
 - **Memory** — physical footprint on iOS; Java and native heap on Android.
 - **TTI, screens, marks, measures, crashes.**
+
+## Release builds
+
+A dev bundle runs hot enough that its numbers are their own story. To measure the build you ship,
+on a device you are holding:
+
+```ts
+startPerfMonitor({ enableInRelease: true, host: '192.168.1.5' });
+```
+
+`host` is **not optional here.** `'auto'` reads Metro's address out of `SourceCode.scriptURL`, and
+a release bundle loads from `assets://` or `file://` — there is nothing to parse. Pass your Mac's
+LAN address. If you forget, the SDK says so in the device log: this one warning is forced past the
+`__DEV__` guard precisely because a release build would otherwise go quiet with no clue why.
+
+| Metric | In a release build |
+|---|---|
+| UI frames, jank, refresh rate | Identical. The native modules are not gated on build type |
+| JS fps, stalls, JS heap, bridge calls | Work — and these are the numbers worth quoting |
+| Memory, screens, TTI, marks, measures, crashes | Work |
+| **Component renders** | **Absent** |
+
+Renders go for two independent reasons: React's commit hook,
+`__REACT_DEVTOOLS_GLOBAL_HOOK__`, is not installed in a release bundle, and React ships its
+production renderer, which records no timings to read even if it were. Profile in dev to find
+*which component* is at fault; re-record in release to confirm the fix on the real build.
+
+Samples carry `runtime.dev: false`, so a release recording is labelled as one.
+
+> This is a release-*configuration* build on your own device — not field monitoring. An App Store
+> build on a stranger's phone cannot reach a daemon on your desk, and there is no hosted collector
+> behind this package.
 
 ## UI-thread frames
 
@@ -88,7 +120,7 @@ startPerfMonitor({
   trackRenders: true,
   trackBridge: true,
   trackUiFrames: true,   // native frame module; no-op where it is absent
-  enableInRelease: false,
+  enableInRelease: false, // outside __DEV__; requires an explicit `host`
   bundleId: 'com.example.app',
   onStatus: (s) => console.log('[rnperf]', s),
 });
@@ -142,7 +174,7 @@ end
 
 2. **An explicit host.** A device cannot reach `localhost`, and with an embedded bundle there is no
    Metro URL to infer from, so pass your Mac's LAN address:
-   `startPerfMonitor({ host: '192.168.1.21' })`.
+   `startPerfMonitor({ host: '192.168.1.21' })`. This is always the case in a release build.
 
 **The app crashes instantly on iOS 26 or newer**, in
 `__UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`. Not this SDK: iOS 26 traps apps
@@ -159,7 +191,8 @@ picks the pod up at install time.
 ## Caveats
 
 - Render tracking requires a **development build**: React only populates timing data in its
-  profiling build.
+  profiling build, and a release bundle installs no commit hook to report through. Everything
+  else still reports — see [Release builds](#release-builds).
 - Under the new architecture most native calls are synchronous JSI and never cross the
   bridge, so `bridgeCalls` reads zero there — that means "nothing on the bridge", not
   "nothing happening".

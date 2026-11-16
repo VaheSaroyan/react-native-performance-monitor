@@ -220,8 +220,9 @@
 
       <h3>Install a release</h3>
       <p>
-        Download <code>RN Performance Monitor-&lt;version&gt;-arm64.dmg</code>, open it and drag the app to
-        Applications. Builds are signed with a Developer ID.
+        Download <code>RN-Performance-Monitor-&lt;version&gt;-arm64.dmg</code>, open it and drag the app to
+        Applications. Builds are signed with a Developer ID, and notarised when the release had the
+        credentials for it — see <a href="#desktop">Handing it to someone else</a>.
       </p>
       <div class="note note-warn">
         <p>
@@ -251,7 +252,8 @@
         Pass the certificate's common name only, with no <code>Developer ID Application:</code> prefix.
       </p>
       <div class="code" data-lang="bash">
-        <pre><code><span class="pr">$</span> export CSC_NAME=<span class="st">"Your Name (TEAMID)"</span>
+        <pre><code><span class="pr">$</span> security find-identity -v -p codesigning   <span class="cm"># find yours</span>
+<span class="pr">$</span> export CSC_NAME=<span class="st">"Your Name (TEAMID)"</span>
 <span class="pr">$</span> npm -w @rnperf/desktop run package</code></pre>
       </div>
       <p>
@@ -260,19 +262,66 @@
         <code>allow-unsigned-executable-memory</code>; the daemon shells out to <code>adb</code> and <code>xcrun</code>,
         which needs <code>disable-library-validation</code>.
       </p>
+
+      <h3>Handing it to someone else</h3>
       <p>
-        Signing alone is not enough to run on someone else's Mac. To notarise, set
-        <code>notarize</code> to true in the <code>build.mac</code> config and supply credentials:
+        A Developer ID signature is <em>not</em> enough on its own. Gatekeeper rejects a signed but
+        unnotarised build on any Mac except the one that made it, with
+        <code>source=Unnotarized Developer ID</code>. Notarisation is what removes the step where the
+        recipient has to be talked through a terminal command — it is the difference between
+        <q>double-click it</q> and <q>first, clear the quarantine flag</q>.
       </p>
+      <p>You need three things, all from the same Apple Developer account that issued the certificate:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Variable</th><th>Where it comes from</th></tr></thead>
+          <tbody>
+            <tr><td><code>APPLE_ID</code></td><td>The Apple ID email on the developer account</td></tr>
+            <tr><td><code>APPLE_APP_SPECIFIC_PASSWORD</code></td><td><code>appleid.apple.com</code> → Sign-In and Security → App-Specific Passwords. Not your account password; Apple rejects that</td></tr>
+            <tr><td><code>APPLE_TEAM_ID</code></td><td>The ten characters in brackets after your certificate's name</td></tr>
+          </tbody>
+        </table>
+      </div>
       <div class="code" data-lang="bash">
-        <pre><code><span class="pr">$</span> export APPLE_ID=you@example.com
+        <pre><code><span class="pr">$</span> export CSC_NAME=<span class="st">"Your Name (TEAMID)"</span>
+<span class="pr">$</span> export APPLE_ID=you@example.com
 <span class="pr">$</span> export APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx
 <span class="pr">$</span> export APPLE_TEAM_ID=TEAMID
-<span class="pr">$</span> npm -w @rnperf/desktop run package</code></pre>
+<span class="pr">$</span> npm -w @rnperf/desktop run package:notarized</code></pre>
       </div>
       <p>
-        Generate the app-specific password at <code>appleid.apple.com</code> under App-Specific Passwords.
-        In CI this is all handled for you — see <a href="#releases">Releases and CI</a>.
+        <code>package:notarized</code> passes <code>-c.mac.notarize=true</code>, which is exactly what the
+        release workflow passes in CI, so a build cut by hand and a tagged one produce the same artifact.
+        The default <code>package</code> script leaves notarisation off, because turning it on without
+        credentials fails the build rather than quietly skipping.
+      </p>
+      <p>
+        electron-builder uploads the app, waits for Apple, and <strong>staples</strong> the result to both the
+        <code>.app</code> and the DMG. Stapling is the part that matters for a recipient: it attaches the
+        ticket to the file itself, so the app opens on a machine that is offline or behind a firewall that
+        cannot reach Apple. Expect several minutes of waiting with no output.
+      </p>
+      <p>Check the DMG before you send it — on the DMG, not just the app inside it:</p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> xcrun stapler validate <span class="st">"apps/desktop/release/RN-Performance-Monitor-0.1.0-arm64.dmg"</span>
+<span class="pr">$</span> spctl -a -vvv -t install <span class="st">"apps/desktop/release/RN-Performance-Monitor-0.1.0-arm64.dmg"</span></code></pre>
+      </div>
+      <p>
+        <code>source=Notarized Developer ID</code> means anyone can open it. <code>source=Unnotarized
+        Developer ID</code> means they cannot, whatever the build log said.
+      </p>
+      <div class="note">
+        <p>
+          <b>Test it somewhere the quarantine flag is real.</b> A build opens on the machine that produced it
+          whether or not it is notarised, so that machine cannot tell you anything. Download it through a
+          browser on another Mac, or fake the flag:
+          <code>xattr -w com.apple.quarantine "0081;00000000;Safari;" /path/to.dmg</code>.
+        </p>
+      </div>
+      <p>
+        In CI all of this is handled for you — see <a href="#releases">Releases and CI</a>. The MCP server
+        and the SDK need none of it: a <code>.mjs</code> file and an npm package are not subject to
+        Gatekeeper.
       </p>
     </section>
 
@@ -317,16 +366,64 @@ startPerfMonitor();   <span class="cm">// host is derived from the Metro bundle 
         nothing when you are not profiling.
       </p>
 
+      <h4>Profiling a release build</h4>
+      <p>
+        A dev bundle runs hot enough that its numbers are their own story. To measure the build you
+        actually ship, on a device you are holding:
+      </p>
+      <div class="code" data-lang="ts">
+        <pre><code>startPerfMonitor({ <span class="kw">enableInRelease</span>: <span class="kw">true</span>, host: <span class="st">'192.168.1.5'</span> });</code></pre>
+      </div>
+      <p>
+        <code>host</code> is <strong>not optional here</strong>. Auto-discovery reads Metro's address out of the
+        bundle URL, and a release bundle is loaded from <code>assets://</code> or <code>file://</code> — there is
+        no address in it. Pass your Mac's LAN address; the daemon already listens on every interface.
+      </p>
+      <p>What carries over unchanged, and what does not:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Metric</th><th>In a release build</th></tr></thead>
+          <tbody>
+            <tr><td>UI-thread frames, jank, refresh rate</td><td>Identical. <code>CADisplayLink</code> and <code>Choreographer</code> are not gated on build type</td></tr>
+            <tr><td>JS fps, stalls, JS heap, bridge calls</td><td>Work, and are the numbers worth quoting</td></tr>
+            <tr><td>Memory footprint, screens, TTI, marks, crashes</td><td>Work</td></tr>
+            <tr><td><strong>Component renders</strong></td><td><strong>Absent.</strong> Two independent reasons, below</td></tr>
+            <tr><td>Host-side CPU</td><td>Needs a cable and a development- or ad-hoc-signed build</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Renders go for two reasons at once: React's commit hook,
+        <code>__REACT_DEVTOOLS_GLOBAL_HOOK__</code>, is not installed in a release bundle, and React ships
+        its production renderer, which records no timings to read even if it were. So every
+        <code>render-storm</code>, <code>expensive-render</code> and <code>large-list-unvirtualised</code> finding
+        disappears — on a typical session that is most of them. Frame and stall findings remain, and they
+        are the ones a user would have felt.
+      </p>
+      <div class="note note-warn">
+        <p>
+          <b>Build it for release, not for the store.</b> This measures a release-<em>configuration</em> build
+          on a device you are holding. A TestFlight or App Store build on someone else's phone cannot reach
+          a daemon on your desk, and rnperf is not a field-monitoring product — there is no backend,
+          sampling or consent flow behind it.
+        </p>
+      </div>
+      <p>
+        If the host is missing the SDK logs it even in release, where its warnings are otherwise silent —
+        look for <code>[rnperf]</code> in the device log. The session records
+        <code>runtime.dev: false</code>, so a recording made this way is labelled for what it is.
+      </p>
+
       <h4>Options</h4>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Option</th><th>Default</th><th>What it does</th></tr></thead>
           <tbody>
-            <tr><td><code>host</code></td><td><code>'auto'</code></td><td>Where the daemon is. Derived from Metro's address; pass an IP when you are not using Metro</td></tr>
+            <tr><td><code>host</code></td><td><code>'auto'</code></td><td>Where the daemon is. Derived from Metro's address; pass an IP when you are not using Metro, and always in a release build</td></tr>
             <tr><td><code>appName</code></td><td>—</td><td>Labels the session in the sidebar</td></tr>
             <tr><td><code>bundleId</code></td><td>—</td><td>Lets the daemon pair SDK data with host-side samples for the same process</td></tr>
             <tr><td><code>appVersion</code></td><td>—</td><td>Recorded with the session, so a diff knows which build it compared</td></tr>
-            <tr><td><code>enableInRelease</code></td><td><code>false</code></td><td>Run outside <code>__DEV__</code></td></tr>
+            <tr><td><code>enableInRelease</code></td><td><code>false</code></td><td>Run outside <code>__DEV__</code>. Requires an explicit <code>host</code>, and loses component renders</td></tr>
           </tbody>
         </table>
       </div>
@@ -378,8 +475,16 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
       </p>
 
       <div class="code" data-lang="bash">
-        <pre><code><span class="pr">$</span> claude mcp add rnperf -- node /absolute/path/to/packages/mcp-server/dist/index.js</code></pre>
+        <pre><code><span class="pr">$</span> claude mcp add rnperf -- node /absolute/path/to/packages/mcp-server/dist/index.js
+<span class="pr">$</span> claude mcp list                     <span class="cm"># rnperf: ... ✓ Connected</span></code></pre>
       </div>
+      <p>
+        Run that from the React Native project you want profiled, not from this repo — the registration is
+        stored per directory, and the agent's working directory is what the findings resolve component names
+        against. Add <code>--scope project</code> to commit it to that repo's
+        <code>.mcp.json</code> and share it with the team; the default keeps it to your machine. The path
+        must be absolute.
+      </p>
       <p>Then ask for what you want:</p>
       <div class="note">
         <p>Profile the checkout screen on the emulator and fix whatever is making it janky.</p>
@@ -401,6 +506,14 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
       <p>
         One self-contained file with the daemon and every dependency inside it. The recipient needs nothing
         but Node, and it is attached to every release.
+      </p>
+      <div class="code" data-lang="bash">
+        <pre><code><span class="pr">$</span> claude mcp add rnperf -- node /path/to/rnperf-mcp.mjs</code></pre>
+      </div>
+      <p>
+        No signing, no notarisation, no Gatekeeper: a <code>.mjs</code> file run by Node is not a macOS
+        application. The same goes for <code>@rnperf/sdk</code> from npm. The DMG is the only artifact that
+        needs <a href="#desktop">notarising</a> before someone else can open it.
       </p>
 
       <h3>Tools</h3>
@@ -426,6 +539,14 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
           <b>Set a real project root.</b> Component lookup ripgreps it. Point it at a home directory and
           every findings request hangs, which is why <code>/</code>, <code>$HOME</code> and one-level-deep
           paths are rejected outright.
+        </p>
+      </div>
+      <div class="note">
+        <p>
+          <b>A release-build session carries fewer findings</b>, and the ones it loses are exactly the ones
+          that name a file and line. Component renders are not recorded outside a dev build, so an agent
+          working from that session gets frames, stalls and memory and has to find the component itself.
+          Profile in dev to locate the cause; re-record in release to confirm the fix on the build you ship.
         </p>
       </div>
     </section>
@@ -580,11 +701,21 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
         </li>
         <li>
           <strong>Render tracking needs a dev build</strong> — React only records timings in its profiling
-          build.
+          build, and a release bundle installs no commit hook for it to report through. Frames, stalls and
+          memory are unaffected.
         </li>
         <li>
           <strong>Dev bundles run much hotter than release.</strong> Compare like for like, and never quote a
-          dev number as a shipping one.
+          dev number as a shipping one. To measure the real thing, see
+          <a href="#sdk">Profiling a release build</a>.
+        </li>
+        <li>
+          <strong>A release build cannot find the daemon by itself.</strong> There is no Metro URL in an
+          embedded bundle, so <code>host</code> has to be passed explicitly.
+        </li>
+        <li>
+          <strong>It profiles devices you hold, not users in the field.</strong> Everything reports to a
+          daemon on your machine over the LAN. There is no hosted collector.
         </li>
       </ul>
     </section>
