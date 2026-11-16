@@ -15,6 +15,13 @@ type View =
 
 type StoredSession = SessionMeta & { live?: boolean };
 
+/**
+ * How often a live recording re-runs its analysis. The rules need a few
+ * seconds of samples before any of them can fire, so a single fetch at mount
+ * would leave the Problems count reading zero for the whole recording.
+ */
+const LIVE_ANALYSIS_MS = 5000;
+
 export default function App() {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [sessions, setSessions] = useState<StoredSession[]>([]);
@@ -484,14 +491,45 @@ function SessionView({
 
   useEffect(() => { setTab(isLive ? 'charts' : 'findings'); }, [isLive, sessionId]);
 
+  // The charts redraw from the streamed samples, but findings are derived by the
+  // daemon and have to be asked for. Asking once would pin the Problems count to
+  // what the opening seconds showed — necessarily zero, since every rule has a
+  // minimum-sample guard — while the trace beside it filled up with jank.
   useEffect(() => {
     setAnalysis(null);
     setStored([]);
     setLoading(true);
-    Promise.all([api.findings(sessionId), api.samples(sessionId, true)])
-      .then(([a, s]) => { setAnalysis(a); setStored(s.samples); })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const read = async (first: boolean) => {
+      try {
+        const [a, s] = await Promise.all([
+          // Resolving component names to files walks the project tree, which is
+          // far too slow to repeat every few seconds. A live poll takes the
+          // numbers; the stopped session gets the file and line.
+          api.findings(sessionId, !isLive),
+          first ? api.samples(sessionId, true) : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        setAnalysis(a);
+        if (s) setStored(s.samples);
+      } catch {
+        // A dropped poll is not worth disturbing the view over; the next one
+        // is five seconds away.
+      } finally {
+        if (!cancelled) {
+          if (first) setLoading(false);
+          // Chained rather than set on an interval, so a slow analysis can
+          // never queue up behind itself.
+          if (isLive) timer = setTimeout(() => void read(false), LIVE_ANALYSIS_MS);
+        }
+      }
+    };
+
+    void read(true);
+    return () => { cancelled = true; if (timer !== undefined) clearTimeout(timer); };
   }, [sessionId, isLive]);
 
   const shown = isLive && samples.length ? samples : stored.length ? stored : samples;

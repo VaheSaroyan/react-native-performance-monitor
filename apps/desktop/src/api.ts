@@ -46,7 +46,13 @@ export const api = {
   deleteSession: (id: string) => request<{ deleted: boolean }>(`/api/sessions/${id}`, { method: 'DELETE' }),
   samples: (id: string, full = false) =>
     request<{ samples: Sample[] }>(`/api/sessions/${id}/samples${full ? '?full=1' : ''}`),
-  findings: (id: string) => request<{ findings: Finding[]; summary: SessionSummary }>(`/api/sessions/${id}/findings`),
+  // `locate` resolves component names to files by searching the project, which
+  // costs seconds on a large tree. A live poll asks for the numbers only; the
+  // full pass runs once the recording has stopped.
+  findings: (id: string, locate = true) =>
+    request<{ findings: Finding[]; summary: SessionSummary }>(
+      `/api/sessions/${id}/findings${locate ? '' : '?locate=0'}`,
+    ),
   diff: (baseline: string, candidate: string) =>
     request<{ diff: import('@rnperf/protocol').SessionDiff }>('/api/diff', {
       method: 'POST', body: JSON.stringify({ baseline, candidate }),
