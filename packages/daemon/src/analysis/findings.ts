@@ -252,10 +252,13 @@ export function deriveFindings(
         `The device itself reports ${round(jank?.p50 ?? 0, 1)}% jank, because it counts against ` +
         `the panel's ${round(displayMs)}ms rather than the app's.${frameTimes}`,
       suggestion: ios
-        ? 'iOS caps an app at 60fps on a ProMotion display unless it opts out. Set ' +
-          '`CADisableMinimumFrameDuration` to `true` in `Info.plist` to allow the full rate — but ' +
-          'move animations to the native driver or Reanimated first: at 120Hz the budget halves to ' +
-          '8.3ms, so anything already near the limit will start dropping frames.'
+        ? 'iOS caps an app at 60fps on a ProMotion iPhone unless it opts out. Set ' +
+          '`CADisableMinimumFrameDurationOnPhone` to `true` in `Info.plist` — under ' +
+          '`ios.infoPlist` in `app.config.ts` or `app.json` on Expo, since a prebuild overwrites ' +
+          'the file. iPad Pro needs no key. The app has to be rebuilt and reinstalled for it to ' +
+          'take effect, and a simulator always reports 60Hz, so only a physical device can confirm ' +
+          'it. Move animations to the native driver or Reanimated first: at 120Hz the budget ' +
+          'halves to 8.3ms, so anything already near the limit will start dropping frames.'
         : 'The system chose this rate. An app can ask for a higher one with `Surface.setFrameRate` ' +
           'or `preferredDisplayModeId`, but check animations are off the JS thread first — the ' +
           'budget shrinks in proportion.',
