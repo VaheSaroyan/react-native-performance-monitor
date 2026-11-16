@@ -173,6 +173,7 @@ export type FindingKind =
   | 'js-fps-low'
   | 'js-thread-stall'
   | 'ui-jank'
+  | 'ui-below-display-rate'
   | 'render-storm'
   | 'expensive-render'
   | 'memory-growth'

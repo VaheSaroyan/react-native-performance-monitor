@@ -81,10 +81,27 @@ export function deriveFindings(
 ): Finding[] {
   const out: Finding[] = [];
   const m = summary.metrics;
-  // A ProMotion display has an 8.3ms budget, not 16.7ms. When the app reports
-  // its refresh rate, hold it to the budget it actually has.
   const refreshHz = samples.find((s) => typeof s.uiRefreshHz === 'number')?.uiRefreshHz;
-  const frameBudgetMs = refreshHz && refreshHz > 20 ? 1000 / refreshHz : thresholds.frameBudgetMs;
+  const displayMs = refreshHz && refreshHz > 20 ? 1000 / refreshHz : thresholds.frameBudgetMs;
+  /*
+   * A panel's refresh rate is not the rate the app is allowed to reach. iOS
+   * holds an app to 60fps on a ProMotion display unless it opts out, and the
+   * frame counter divides missed refreshes by every refresh the panel offered
+   * — so an app that never drops a frame still reports 50% jank there.
+   *
+   * The typical frame says what rate the app is really keeping: how many
+   * display refreshes it spans is the cadence, 1 at the panel's own rate and
+   * 2 for 60fps on a 120Hz screen. Hold the app to that, because a steady
+   * cadence is what a person reads as smooth.
+   */
+  const cadence = (() => {
+    const typical = m['frameP50Ms']?.p50;
+    return typical && typical > 0 ? Math.max(1, Math.round(typical / displayMs)) : 1;
+  })();
+  const frameBudgetMs = displayMs * cadence;
+  const effectiveHz = 1000 / frameBudgetMs;
+  const rate = `${Math.round(effectiveHz)}fps`;
+  const onDisplay = refreshHz ? ` on a ${Math.round(refreshHz)}Hz display` : '';
   const durationMin = Math.max(summary.durationMs / 60_000, 1 / 60);
   const durationSec = Math.max(summary.durationMs / 1000, 1);
 
@@ -119,7 +136,7 @@ export function deriveFindings(
       subject: worstScreen(summary, samples, 'jsStallMaxMs', 'high'),
       evidence:
         `Longest JS stall ${round(stall.max)}ms (p95 ${round(stall.p95)}ms). ` +
-        `A stall over ${Math.round(frameBudgetMs)}ms means at least one dropped frame` +
+        `A stall over ${Math.round(frameBudgetMs)}ms drops at least one frame at this app's ${rate} cadence` +
         `${refreshHz ? ` on this ${Math.round(refreshHz)}Hz display` : ''}.`,
       suggestion:
         'Something is running a long synchronous block on the JS thread. Usual causes: JSON.parse of a ' +
@@ -134,27 +151,115 @@ export function deriveFindings(
 
   const jank = m['jankPercent'];
   const p95 = m['frameP95Ms'];
-  if (jank && jank.p50 >= thresholds.jankPercent) {
+  const p99 = m['frameP99Ms'];
+
+  /*
+   * The cadence is only worth crediting when the app is actually keeping it.
+   * A tight distribution — a 95th-percentile frame barely longer than the
+   * typical one — is an app pacing itself. A wide one means the typical frame
+   * says nothing about the rest, and rounding it to a whole number of
+   * refreshes would invent a cadence out of noise.
+   *
+   * It also has to be a cadence something could plausibly be pacing to: a
+   * real reported refresh rate, and a small multiple of it. A frame that
+   * spans 297 refreshes is not a 0.2fps cadence, it is a broken recording.
+   */
+  const cadenceHolds =
+    cadence > 1 && cadence <= 4 && !!refreshHz && !!p95 && p95.p50 <= frameBudgetMs * 1.25;
+  const budgetMs = cadenceHolds ? frameBudgetMs : displayMs;
+
+  /*
+   * Where the cadence holds, re-express the reported figure as a share of the
+   * frames the app could have drawn at it. Each good frame is expected to skip
+   * (cadence - 1) refreshes, so scaling by the cadence and subtracting those
+   * inverts the native counter exactly: a steady 60fps on a 120Hz panel lands
+   * on zero. Where it does not hold, the raw figure stands.
+   */
+  const jankPct = jank
+    ? cadenceHolds
+      ? Math.max(0, cadence * jank.p50 - (cadence - 1) * 100)
+      : jank.p50
+    : undefined;
+
+  const frameTimes = p95
+    ? ` Frame time p95 ${round(p95.p50)}ms, p99 ${round(p99?.p50 ?? 0)}ms.`
+    : '';
+  const against = cadenceHolds
+    ? `the ${round(budgetMs)}ms this app normally takes — its own ${rate} cadence${onDisplay}`
+    : `the ${round(budgetMs)}ms budget${onDisplay}`;
+
+  const numbers = {
+    jankPercent: round(jankPct ?? 0, 1),
+    frameP95Ms: p95 ? round(p95.p50) : 0,
+    frameBudgetMs: round(budgetMs),
+    effectiveHz: Math.round(effectiveHz),
+    ...(cadenceHolds && jank ? { reportedJankPercent: round(jank.p50, 1) } : {}),
+    ...(refreshHz ? { refreshHz: Math.round(refreshHz) } : {}),
+  };
+
+  const UI_FIX =
+    'Frames are being dropped on the native UI thread, which JS-side fixes will not help. ' +
+    'Look for deep view hierarchies, overlapping translucent views, large uncached images ' +
+    '(size them to their display dimensions), shadows on Android (`elevation` is cheaper), and ' +
+    '`overflow: hidden` with border radius on scrolling content.';
+
+  // 58 rather than 60: a display reports 60.000003Hz and frames jitter either
+  // side of the budget, so an app holding 60fps measures a shade under it.
+  const SMOOTH_HZ = 58;
+
+  if (jankPct !== undefined && jankPct >= thresholds.jankPercent) {
     out.push({
       kind: 'ui-jank',
-      severity: jank.p50 >= thresholds.jankPercent * 3 ? 'critical' : 'high',
+      severity: jankPct >= thresholds.jankPercent * 3 ? 'critical' : 'high',
       title: 'UI thread is missing its frame budget',
       subject: worstScreen(summary, samples, 'jankPercent', 'high'),
+      evidence: `${round(jankPct, 1)}% of frames missed ${against}.${frameTimes}`,
+      suggestion: UI_FIX,
+      data: numbers,
+    });
+  } else if (cadenceHolds && effectiveHz < SMOOTH_HZ) {
+    /*
+     * Steady, and that is the problem: the app is pacing itself to a slow
+     * cadence and hitting it every time. Nothing in the jank figure can show
+     * this, because by its own measure the app is not dropping anything.
+     */
+    out.push({
+      kind: 'ui-jank',
+      severity: effectiveHz < 30 ? 'critical' : 'high',
+      title: `UI thread is locked to ${rate}`,
+      subject: worstScreen(summary, samples, 'jankPercent', 'high'),
       evidence:
-        `${round(jank.p50, 1)}% of frames exceeded the ${round(frameBudgetMs)}ms budget` +
-        `${refreshHz ? ` of a ${Math.round(refreshHz)}Hz display` : ''}` +
-        (p95 ? `; frame time p95 ${round(p95.p50)}ms, p99 ${round(m['frameP99Ms']?.p50 ?? 0)}ms.` : '.'),
-      suggestion:
-        'Frames are being dropped on the native UI thread, which JS-side fixes will not help. ' +
-        'Look for deep view hierarchies, overlapping translucent views, large uncached images ' +
-        '(size them to their display dimensions), shadows on Android (`elevation` is cheaper), and ' +
-        '`overflow: hidden` with border radius on scrolling content.',
-      data: {
-        jankPercent: round(jank.p50, 1),
-        frameP95Ms: p95 ? round(p95.p50) : 0,
-        frameBudgetMs: round(frameBudgetMs),
-        ...(refreshHz ? { refreshHz: Math.round(refreshHz) } : {}),
-      },
+        `Every frame takes ${round(budgetMs)}ms — a steady ${rate}${onDisplay}, held so ` +
+        `consistently that the dropped-frame count stays near zero. Motion at this rate reads ` +
+        `as choppy however even it is.${frameTimes}`,
+      suggestion: UI_FIX,
+      data: numbers,
+    });
+  } else if (cadenceHolds && refreshHz) {
+    /*
+     * Smooth, then — just not as smooth as the hardware allows. Worth one
+     * quiet line, since the raw counter calls this 50% jank and a reader who
+     * saw that number deserves to know where it went.
+     */
+    const ios = summary.meta.device.platform === 'ios';
+    out.push({
+      kind: 'ui-below-display-rate',
+      severity: 'low',
+      title: `Rendering at ${rate} on a ${Math.round(refreshHz)}Hz display`,
+      evidence:
+        `Typical frame ${round(budgetMs)}ms — one for every ${cadence} refreshes the display ` +
+        `offers, and ${round(jankPct ?? 0, 1)}% of them miss it. The app is steady, just not fast. ` +
+        `The device itself reports ${round(jank?.p50 ?? 0, 1)}% jank, because it counts against ` +
+        `the panel's ${round(displayMs)}ms rather than the app's.${frameTimes}`,
+      suggestion: ios
+        ? 'iOS caps an app at 60fps on a ProMotion display unless it opts out. Set ' +
+          '`CADisableMinimumFrameDuration` to `true` in `Info.plist` to allow the full rate — but ' +
+          'move animations to the native driver or Reanimated first: at 120Hz the budget halves to ' +
+          '8.3ms, so anything already near the limit will start dropping frames.'
+        : 'The system chose this rate. An app can ask for a higher one with `Surface.setFrameRate` ' +
+          'or `preferredDisplayModeId`, but check animations are off the JS thread first — the ' +
+          'budget shrinks in proportion.',
+      data: numbers,
     });
   }
 
