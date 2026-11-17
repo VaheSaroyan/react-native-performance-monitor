@@ -9,7 +9,15 @@ import { DaemonClient } from './client.js';
 import { formatDiff, formatFindings, formatMetricTable } from './format.js';
 
 const client = new DaemonClient();
-const server = new McpServer({ name: 'rnperf', version: '0.1.0' });
+
+// Stamped in by the bundler from package.json. Running straight from source
+// there is nothing to stamp, and the release also ships the bundle as a lone
+// .mjs with no manifest beside it to read — so a literal is the only form that
+// survives every way this server is started.
+declare const __RNPERF_VERSION__: string | undefined;
+const version = typeof __RNPERF_VERSION__ === 'string' ? __RNPERF_VERSION__ : 'dev';
+
+const server = new McpServer({ name: 'rnperf', version });
 
 const text = (body: string) => ({ content: [{ type: 'text' as const, text: body }] });
 

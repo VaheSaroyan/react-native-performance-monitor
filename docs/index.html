@@ -158,34 +158,28 @@
     <!-- ------------------------------------------------------------- -->
     <section id="quickstart">
       <h2>Quickstart</h2>
-      <p class="standfirst">From a clean checkout to a first recording.</p>
+      <p class="standfirst">From nothing installed to a first recording.</p>
 
       <ol class="steps">
         <li>
-          <h3>Install the monitor</h3>
-          <p>Node 20.11 or newer. The repo is an npm workspace, so one install covers every package.</p>
-          <div class="code" data-lang="bash">
-            <pre><code><span class="pr">$</span> git clone https://github.com/VaheSaroyan/react-native-performance-monitor.git
-<span class="pr">$</span> cd react-native-performance-monitor
-<span class="pr">$</span> npm install
-<span class="pr">$</span> npm run build</code></pre>
-          </div>
+          <h3>Install the app</h3>
           <p>
-            Or skip the checkout entirely and take the <code>.dmg</code> from the
-            <a href="https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest">latest release</a>.
-            Every release says in its own notes whether it was signed; an unsigned one needs the
-            quarantine flag cleared — <a href="#desktop">below</a>.
+            Download
+            <a href="https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest">the
+            latest release</a>, open the DMG and drag the app to Applications. It is signed and notarised,
+            so it opens on a double-click — nothing to clone, build or unquarantine.
+          </p>
+          <p>
+            Measuring Android needs <code>adb</code> on your <code>PATH</code>; iOS needs Xcode's command
+            line tools. Both are checked at startup and named in the device list if they are missing.
           </p>
         </li>
 
         <li>
-          <h3>Open the app</h3>
-          <div class="code" data-lang="bash">
-            <pre><code><span class="pr">$</span> npm run desktop</code></pre>
-          </div>
+          <h3>Pick a device</h3>
           <p>
-            Your devices appear in the sidebar — booted simulators, running emulators, anything on
-            <code>adb devices</code>, and paired iPhones. Pick one.
+            Open the app. Your devices appear in the sidebar — booted simulators, running emulators,
+            anything on <code>adb devices</code>, and paired iPhones. Pick one.
           </p>
         </li>
 
@@ -213,7 +207,27 @@
             where the SDK was reporting, the component and source file to change.
           </p>
         </li>
+
+        <li>
+          <h3>Let an agent fix them</h3>
+          <p>Run this inside the React Native project you are profiling:</p>
+          <div class="code" data-lang="bash">
+            <pre><code><span class="pr">$</span> claude mcp add rnperf -- npx -y @rnperf/mcp-server</code></pre>
+          </div>
+          <p>
+            Claude can now record, read the findings, open the files they name and make the edits — see
+            <a href="#agent">Claude Code and MCP</a>.
+          </p>
+        </li>
       </ol>
+
+      <div class="note">
+        <p>
+          <b>For findings that name a component and a line</b>, add the SDK to the app under test:
+          <code>npm install @rnperf/sdk</code>. Without it you still get CPU, memory and real frame
+          timings; with it you get attribution — <a href="#sdk">The in-app SDK</a>.
+        </p>
+      </div>
     </section>
 
     <!-- ------------------------------------------------------------- -->
@@ -226,10 +240,11 @@
         Applications.
       </p>
       <p>
-        A release is signed, and notarised, only when the workflow that built it had the credentials to do
-        so — the release notes state which, every time. <strong>Published builds are currently
-        unsigned</strong>, so expect to clear the quarantine flag below until the repository carries those
-        secrets. What it takes is in <a href="#desktop">Handing it to someone else</a>.
+        Releases are signed with a Developer ID and notarised by Apple, and the ticket is stapled to both
+        the app and the DMG — so a download opens on a double-click, offline included. Each release states
+        in its own notes whether it was signed; a build made without the credentials says so, and needs the
+        quarantine flag cleared. What it takes to produce one is in
+        <a href="#desktop">Handing it to someone else</a>.
       </p>
       <div class="note note-warn">
         <p>
@@ -492,16 +507,28 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
       </p>
 
       <div class="code" data-lang="bash">
-        <pre><code><span class="pr">$</span> claude mcp add rnperf -- node /absolute/path/to/packages/mcp-server/dist/index.js
+        <pre><code><span class="pr">$</span> claude mcp add rnperf -- npx -y @rnperf/mcp-server
 <span class="pr">$</span> claude mcp list                     <span class="cm"># rnperf: ... ✓ Connected</span></code></pre>
       </div>
       <p>
-        Run that from the React Native project you want profiled, not from this repo — the registration is
-        stored per directory, and the agent's working directory is what the findings resolve component names
-        against. Add <code>--scope project</code> to commit it to that repo's
-        <code>.mcp.json</code> and share it with the team; the default keeps it to your machine. The path
-        must be absolute.
+        Node 20.11 and nothing else: the daemon and every dependency are bundled into the published
+        package, so the install is one file of about a megabyte and no dependency tree. There is no
+        checkout, and no path to get wrong.
       </p>
+      <p>
+        Run it from the React Native project you want profiled — the registration is stored per directory,
+        and the agent's working directory is what findings resolve component names against. Add
+        <code>--scope project</code> to commit it to that repo's <code>.mcp.json</code> and share it with
+        the team; the default keeps it to your machine.
+      </p>
+      <p>For a client that takes a config file rather than a command:</p>
+      <div class="code" data-lang="json">
+        <pre><code>{
+  <span class="st">"mcpServers"</span>: {
+    <span class="st">"rnperf"</span>: { <span class="st">"command"</span>: <span class="st">"npx"</span>, <span class="st">"args"</span>: [<span class="st">"-y"</span>, <span class="st">"@rnperf/mcp-server"</span>] }
+  }
+}</code></pre>
+      </div>
       <p>Then ask for what you want:</p>
       <div class="note">
         <p>Profile the checkout screen on the emulator and fix whatever is making it janky.</p>
@@ -516,21 +543,19 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
         nothing else open.
       </p>
 
-      <h3>Sending it to a teammate</h3>
-      <div class="code" data-lang="bash">
-        <pre><code><span class="pr">$</span> npm -w @rnperf/mcp-server run bundle   <span class="cm"># → packages/mcp-server/bundle/rnperf-mcp.mjs</span></code></pre>
-      </div>
+      <h3>Without npm</h3>
       <p>
-        One self-contained file with the daemon and every dependency inside it. The recipient needs nothing
-        but Node, and it is attached to every release.
+        The same bundle is attached to every release as <code>rnperf-mcp.mjs</code>, and you can build it
+        from a checkout. Useful on a machine that cannot reach the registry, or to try an unreleased change:
       </p>
       <div class="code" data-lang="bash">
-        <pre><code><span class="pr">$</span> claude mcp add rnperf -- node /path/to/rnperf-mcp.mjs</code></pre>
+        <pre><code><span class="pr">$</span> npm -w @rnperf/mcp-server run bundle   <span class="cm"># → packages/mcp-server/bundle/rnperf-mcp.mjs</span>
+<span class="pr">$</span> claude mcp add rnperf -- node /path/to/rnperf-mcp.mjs</code></pre>
       </div>
       <p>
         No signing, no notarisation, no Gatekeeper: a <code>.mjs</code> file run by Node is not a macOS
-        application. The same goes for <code>@rnperf/sdk</code> from npm. The DMG is the only artifact that
-        needs <a href="#desktop">notarising</a> before someone else can open it.
+        application. The same goes for the npm packages. The DMG is the only artifact that needs
+        <a href="#desktop">notarising</a> before someone else can open it.
       </p>
 
       <h3>Tools</h3>
@@ -665,7 +690,7 @@ reportTTI(<span class="st">'Checkout'</span>, Date.now() - startedAt);</code></p
           <tbody>
             <tr><td><code>MACOS_CERTIFICATE_P12</code><br><code>MACOS_CERTIFICATE_PASSWORD</code></td><td>The DMG is built unsigned, and the release notes say so</td></tr>
             <tr><td><code>APPLE_ID</code><br><code>APPLE_APP_SPECIFIC_PASSWORD</code><br><code>APPLE_TEAM_ID</code></td><td>Signed but not notarised — recipients must clear the quarantine flag</td></tr>
-            <tr><td><code>NPM_TOKEN</code></td><td>The release still carries the SDK tarball, but that version is not published to npm</td></tr>
+            <tr><td><code>NPM_TOKEN</code></td><td>The release still carries the SDK tarball and the MCP bundle, but neither package is published to npm. It must be an npm <strong>automation</strong> token — any other kind is gated behind two-factor auth and stops on <code>EOTP</code></td></tr>
           </tbody>
         </table>
       </div>

@@ -34,21 +34,35 @@ same chart as the component that was re-rendering while it happened.
 
 ## Install
 
-```bash
-npm install
-npm run build
-```
+Three pieces, each one line. Take the ones you need — none of them requires a checkout.
+
+| | Install | What it gives you |
+|---|---|---|
+| **Desktop app** | [Download the DMG](https://github.com/VaheSaroyan/react-native-performance-monitor/releases/latest) | Devices, recordings, charts, ranked findings |
+| **MCP server** | `claude mcp add rnperf -- npx -y @rnperf/mcp-server` | The same analysis, to a coding agent |
+| **In-app SDK** | `npm install @rnperf/sdk` | Attribution: which component, which screen, which file |
+
+The DMG is signed and notarised, so it opens on a double-click. The MCP server needs Node 20.11
+and nothing else — the daemon and every dependency are bundled into the published package.
+Measuring Android needs `adb`; iOS needs Xcode's command line tools.
 
 ## Use it
 
 ### Desktop app
 
+Open it from Applications. Pick a device in the sidebar, choose the app, press **Start
+recording**, exercise the screen you care about, then stop. The Findings tab ranks what it found.
+
+### From source
+
+Only needed to change the monitor itself; everything above is already built.
+
 ```bash
+git clone https://github.com/VaheSaroyan/react-native-performance-monitor.git
+cd react-native-performance-monitor
+npm install && npm run build
 npm run desktop
 ```
-
-Pick a device in the sidebar, choose the app, press **Start recording**, exercise the
-screen you care about, then stop. The Findings tab ranks what it found.
 
 ### Build a release
 
@@ -79,14 +93,19 @@ node packages/daemon/dist/cli.js record emulator-5554 --app com.example.app --se
 ### From Claude Code
 
 ```bash
-claude mcp add rnperf -- node /absolute/path/to/packages/mcp-server/dist/index.js
+claude mcp add rnperf -- npx -y @rnperf/mcp-server
 claude mcp list     # rnperf: ... ✓ Connected
 ```
 
-Run that from the React Native project you want profiled, not from this repo: the registration is
-stored per directory, and the agent's working directory is what component names resolve against.
-`--scope project` writes it to that repo's `.mcp.json` instead, for the whole team. The path has
-to be absolute.
+Run that from the React Native project you want profiled: the registration is stored per
+directory, and the agent's working directory is what component names resolve against.
+`--scope project` writes it to that repo's `.mcp.json` instead, for the whole team.
+
+For a client that takes a config file rather than a command:
+
+```json
+{ "mcpServers": { "rnperf": { "command": "npx", "args": ["-y", "@rnperf/mcp-server"] } } }
+```
 
 Then just ask:
 
@@ -157,16 +176,16 @@ xattr -dr com.apple.quarantine "/Applications/RN Performance Monitor.app"
 
 ### The MCP server
 
-```bash
-npm -w @rnperf/mcp-server run bundle     # → packages/mcp-server/bundle/rnperf-mcp.mjs
-```
-
-That is a single self-contained file — the daemon and every dependency are inside it. Send it to
-a teammate and they need nothing but Node:
+It is on npm, so there is nothing to send:
 
 ```bash
-claude mcp add rnperf -- node /path/to/rnperf-mcp.mjs
+claude mcp add rnperf -- npx -y @rnperf/mcp-server
 ```
+
+The published package is the esbuild bundle — the daemon and every dependency inlined into one
+~1MB file, no dependency tree, Node the only requirement. The same bundle is attached to every
+release as `rnperf-mcp.mjs`, and `npm -w @rnperf/mcp-server run bundle` rebuilds it from a
+checkout, for a machine that cannot reach the registry or to try an unreleased change.
 
 It starts its own daemon when the desktop app is not running, so the agent workflow works on its
 own. No signing or notarisation applies — a `.mjs` file run by Node is not a macOS application,
@@ -371,7 +390,7 @@ Every credential is optional and each missing group degrades one step instead of
 |---|---|
 | `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD` | The DMG is built unsigned, and the release notes say so |
 | `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | Signed but not notarised — recipients must clear the quarantine flag |
-| `NPM_TOKEN` | The release still carries the SDK tarball, but that version is not published to npm |
+| `NPM_TOKEN` | The release still carries the SDK tarball and the MCP bundle, but neither package is published to npm. Must be an npm **automation** token — any other kind is gated behind 2FA and stops on `EOTP` |
 
 The certificate is `base64 -i certificate.p12`, exported from Keychain Access with its private key.
 Notarisation, when enabled, is verified with `xcrun stapler validate` before the release is created:

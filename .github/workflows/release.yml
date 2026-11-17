@@ -244,7 +244,7 @@ jobs:
 
       # Opt-in, and deliberately last: nothing above depends on it, and an npm
       # publish is the one step here that cannot be taken back.
-      - name: Publish @rnperf/sdk to npm
+      - name: Publish to npm
         if: env.PUBLISH == 'true' && steps.caps.outputs.npm == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -253,4 +253,9 @@ jobs:
           # --provenance signs a statement that this tarball was built by this
           # workflow from this commit, which npm shows on the package page. It
           # needs the id-token permission above and a public package.
+          #
+          # The token has to be an npm *automation* token: any other kind is
+          # gated behind two-factor auth and stops here on EOTP, which is how
+          # v0.1.1 shipped its DMG without its package.
           npm publish -w @rnperf/sdk --access public --provenance
+          npm publish -w @rnperf/mcp-server --access public --provenance
