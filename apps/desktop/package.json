@@ -43,6 +43,7 @@
     "productName": "RN Performance Monitor",
     "electronVersion": "33.4.11",
     "artifactName": "RN-Performance-Monitor-${version}-${arch}.${ext}",
+    "afterAllArtifactBuild": "build/notarize-dmg.cjs",
     "directories": {
       "output": "release"
     },

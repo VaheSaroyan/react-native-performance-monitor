@@ -138,6 +138,14 @@ jobs:
             # not stapled, the notarisation did not really land.
             xcrun stapler validate "$app"
             spctl -a -vvv -t install "$app"
+
+            # And the same for the DMG, which is the file people actually
+            # download. electron-builder notarises only the app and wraps it
+            # afterwards, so without the afterAllArtifactBuild hook this is the
+            # check that fails while every other one passes.
+            dmg=$(ls apps/desktop/release/*.dmg | head -1)
+            xcrun stapler validate "$dmg"
+            spctl -a -vvv -t install "$dmg"
           elif [ "${{ steps.caps.outputs.sign }}" = "true" ]; then
             echo "Signed but not notarised — Gatekeeper will refuse this on another Mac."
           fi

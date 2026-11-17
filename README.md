@@ -130,8 +130,13 @@ npm -w @rnperf/desktop run package:notarized
 `package:notarized` passes `-c.mac.notarize=true`, the same flag CI passes, so a hand-cut build and
 a tagged one produce the same artifact. The plain `package` script leaves it off, because enabling
 it without credentials fails the build rather than skipping quietly. electron-builder uploads,
-waits for Apple — several minutes, no output — and **staples** the ticket to the `.app` and the DMG,
-which is what lets the app open on a machine that is offline.
+waits for Apple — several minutes, no output — and **staples** the ticket to the `.app`, which is
+what lets it open on a machine that is offline.
+
+electron-builder stops there: it notarises the app and then builds the DMG *around* it, so the disk
+image people actually download would come out unsigned and unstapled. The `afterAllArtifactBuild`
+hook in `apps/desktop/build/notarize-dmg.cjs` signs, submits and staples the DMG as well, and skips
+itself when no credentials are present.
 
 Verify before sending, on the DMG rather than the app inside it:
 

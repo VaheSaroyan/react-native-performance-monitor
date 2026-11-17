@@ -303,11 +303,21 @@
         credentials fails the build rather than quietly skipping.
       </p>
       <p>
-        electron-builder uploads the app, waits for Apple, and <strong>staples</strong> the result to both the
-        <code>.app</code> and the DMG. Stapling is the part that matters for a recipient: it attaches the
-        ticket to the file itself, so the app opens on a machine that is offline or behind a firewall that
-        cannot reach Apple. Expect several minutes of waiting with no output.
+        electron-builder uploads the app, waits for Apple, and <strong>staples</strong> the ticket to the
+        <code>.app</code>. Stapling is the part that matters for a recipient: it attaches the ticket to the
+        file itself, so the app opens on a machine that is offline or behind a firewall that cannot reach
+        Apple. Expect several minutes of waiting with no output.
       </p>
+      <div class="note">
+        <p>
+          <b>electron-builder stops at the app.</b> It notarises the bundle and then builds the DMG
+          <em>around</em> it, so the disk image — the file people actually download — comes out unsigned and
+          unstapled, and <code>stapler validate</code> reports <code>does not have a ticket stapled to
+          it</code> while every other check passes. The
+          <code>afterAllArtifactBuild</code> hook in <code>apps/desktop/build/notarize-dmg.cjs</code> closes
+          that gap: it signs, submits and staples the DMG too, and skips itself when no credentials are set.
+        </p>
+      </div>
       <p>Check the DMG before you send it — on the DMG, not just the app inside it:</p>
       <div class="code" data-lang="bash">
         <pre><code><span class="pr">$</span> xcrun stapler validate <span class="st">"apps/desktop/release/RN-Performance-Monitor-0.1.0-arm64.dmg"</span>
