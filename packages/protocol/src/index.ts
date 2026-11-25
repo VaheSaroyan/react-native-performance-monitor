@@ -105,7 +105,7 @@ export interface ComponentRenderStat {
   /** Sum of React `actualDuration` across those renders, ms. */
   totalMs: number;
   maxMs: number;
-  /** Renders that produced no visible prop/state change, when detectable. */
+  /** Re-renders whose props were shallow-equal to the previous ones; state, store or context drove them. */
   wasted?: number;
   /** How many of `count` were a component appearing for the first time rather than updating. */
   mounts?: number;

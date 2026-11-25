@@ -137,8 +137,10 @@ export function ComponentTable({ summary }: { summary: SessionSummary }) {
         </tbody>
       </table>
       <div className="notes">
-        A render with no prop change did no useful work. A high count there points at a missing{' '}
-        <b>React.memo</b>, or a callback prop that gets a new identity on every parent render.
+        &ldquo;No prop change&rdquo; counts re-renders whose props were the same as before. That is
+        normal for a component that re-renders from its own state, a store or context, such as a live
+        price or a timer. For a component that only depends on its props, a high count points at a
+        missing <b>React.memo</b>, or a callback prop that gets a new identity on every parent render.
         React Native&rsquo;s own components are listed for context but never reported as findings —
         the fix belongs to whatever renders them.
       </div>

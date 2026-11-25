@@ -7,6 +7,18 @@ import { has, run } from '../util/exec.js';
 const IGNORE = ['node_modules', '.git', 'ios/Pods', 'android/build', 'dist', 'build', '.expo'];
 
 /**
+ * A test, a story and a mock all declare something with the component's name,
+ * and none of them is where a fix goes. Left in, they push the real file down
+ * the list or off it.
+ */
+const NOT_SOURCE =
+  /(^|\/)(__tests__|__mocks__|__fixtures__|\.storybook|\.rnstorybook|e2e)\/|\.(test|spec|stories|story|mock)\.[jt]sx?$/;
+
+export function isComponentSource(file: string): boolean {
+  return !NOT_SOURCE.test(file);
+}
+
+/**
  * Searching a home directory or a volume root takes minutes and never finds a
  * component faster than searching the actual project would. Refusing outright
  * is better than hanging the caller.
@@ -43,6 +55,7 @@ export async function locateComponent(root: string, name: string): Promise<Sourc
   const seen = new Set<string>();
   const out: SourceLocation[] = [];
   for (const hit of hits) {
+    if (!isComponentSource(relative(root, hit.file) || hit.file)) continue;
     const key = `${hit.file}:${hit.line}`;
     if (seen.has(key)) continue;
     seen.add(key);

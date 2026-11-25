@@ -304,6 +304,12 @@ export function deriveFindings(
     if (!longEnoughForLeaks || !stat || stat.samples < 20) continue;
     if (stat.slopePerMin < thresholds.memGrowthMbPerMin || stat.fit < thresholds.memGrowthFit) continue;
     if (stat.max - stat.min < thresholds.memGrowthMinMB) continue;
+    // Memory that climbs and then levels off is an app settling — screens
+    // mounting, caches filling — and fits a rising line just as well as a
+    // leak does. A leak is still climbing at the end, so the second half of
+    // the recording has to show the growth on its own.
+    const lateSlope = slopePerMinute(samples, key, 0.5);
+    if (lateSlope === undefined || lateSlope < thresholds.memGrowthMbPerMin) continue;
     // Only extrapolate as far ahead as the evidence reaches back; projecting
     // ten minutes from a one-minute window invents a number.
     const projectMin = Math.min(10, durationMin);
@@ -313,12 +319,15 @@ export function deriveFindings(
     const confident = summary.durationMs >= thresholds.memGrowthMinMs * 2.5;
     out.push({
       kind: 'memory-growth',
-      severity: confident && stat.slopePerMin > thresholds.memGrowthMbPerMin * 5 ? 'critical' : 'high',
+      severity: !confident
+        ? 'medium'
+        : stat.slopePerMin > thresholds.memGrowthMbPerMin * 5 ? 'critical' : 'high',
       title: `${LABEL[key]} is growing steadily`,
       subject: key,
       evidence:
         `${LABEL[key]} rose from ${round(stat.min, 1)}MB to ${round(stat.max, 1)}MB — ` +
-        `${round(stat.slopePerMin, 2)}MB/min with R²=${round(stat.fit, 2)} over ${durationMin.toFixed(1)} min. ` +
+        `${round(stat.slopePerMin, 2)}MB/min with R²=${round(stat.fit, 2)} over ${durationMin.toFixed(1)} min, ` +
+        `and still ${round(lateSlope, 2)}MB/min in the second half. ` +
         `At this rate it reaches ~${round(projected, 0)}MB after ${round(projectMin, 1)} more minutes.`,
       suggestion:
         key === 'jsHeapMB'
@@ -334,6 +343,7 @@ export function deriveFindings(
         startMB: round(stat.min, 1),
         endMB: round(stat.max, 1),
         slopeMbPerMin: round(stat.slopePerMin, 2),
+        lateSlopeMbPerMin: round(lateSlope, 2),
         fit: round(stat.fit, 2),
       },
     });
@@ -554,4 +564,31 @@ function commonest(samples: Sample[], key: 'uiRefreshHz' | 'uiDisplayMaxHz'): nu
     if (count > bestCount) { best = value; bestCount = count; }
   }
   return best;
+}
+
+/**
+ * Least-squares slope of a metric, in units per minute, over the samples from
+ * `fromFraction` of the way through the recording to its end.
+ */
+function slopePerMinute(
+  samples: Sample[],
+  key: 'rssMB' | 'pssMB' | 'jsHeapMB' | 'javaHeapMB' | 'nativeHeapMB',
+  fromFraction: number,
+): number | undefined {
+  const points: Array<[number, number]> = [];
+  for (const sample of samples) {
+    const value = sample[key];
+    if (typeof value === 'number') points.push([sample.dt / 60_000, value]);
+  }
+  const tail = points.slice(Math.floor(points.length * fromFraction));
+  if (tail.length < 8) return undefined;
+  const meanX = tail.reduce((sum, [x]) => sum + x, 0) / tail.length;
+  const meanY = tail.reduce((sum, [, y]) => sum + y, 0) / tail.length;
+  let numerator = 0;
+  let denominator = 0;
+  for (const [x, y] of tail) {
+    numerator += (x - meanX) * (y - meanY);
+    denominator += (x - meanX) ** 2;
+  }
+  return denominator > 0 ? numerator / denominator : undefined;
 }
