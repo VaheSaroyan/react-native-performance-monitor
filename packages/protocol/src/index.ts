@@ -107,6 +107,8 @@ export interface ComponentRenderStat {
   maxMs: number;
   /** Renders that produced no visible prop/state change, when detectable. */
   wasted?: number;
+  /** How many of `count` were a component appearing for the first time rather than updating. */
+  mounts?: number;
 }
 
 /* ------------------------------------------------------------------ events */

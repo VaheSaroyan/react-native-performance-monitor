@@ -13,8 +13,13 @@ const TRACKED_TAGS = new Set([
   FUNCTION_COMPONENT, CLASS_COMPONENT, FORWARD_REF, MEMO_COMPONENT, SIMPLE_MEMO_COMPONENT,
 ]);
 
+/** Set by React on a fiber whose component function (or class render) actually ran. */
+const PERFORMED_WORK = 0b1;
+
 interface Fiber {
   tag: number;
+  flags?: number;
+  effectTag?: number;
   type: any;
   elementType: any;
   child: Fiber | null;
@@ -27,11 +32,17 @@ interface Fiber {
 /**
  * Attributes render work to components by reading React's own commit data.
  *
- * React populates `actualDuration` on every fiber in a profiling build, which
- * development bundles are. A fiber whose `actualDuration` is zero did not
- * re-render, and because the value is inclusive of children, a zero also means
- * nothing below it re-rendered — so whole subtrees can be skipped. That prune
- * is what makes walking the tree on every commit affordable.
+ * A commit only touches part of the tree. React clones the fibers on the path
+ * to each update and reuses everything else untouched, so a fiber whose child
+ * pointer is the same object as its alternate's has an untouched subtree below
+ * it: nothing there ran in this commit. Skipping those subtrees is what makes
+ * walking the tree on every commit affordable, and it is also what keeps the
+ * counts honest — a reused fiber still carries the `actualDuration` and flags
+ * of the last commit it took part in, so reading them again would count one
+ * render once per later commit, forever.
+ *
+ * Among the fibers that were touched, only those with the PerformedWork flag
+ * ran their component; the rest were cloned on the way down and bailed out.
  */
 export class RenderTracker {
   private stats = new Map<string, ComponentRenderStat>();
@@ -69,15 +80,16 @@ export class RenderTracker {
     const stack: Fiber[] = [root];
     while (stack.length) {
       const fiber = stack.pop()!;
-      const duration = fiber.actualDuration ?? 0;
 
-      // Inclusive of children, so zero prunes the whole subtree.
-      if (duration <= 0) continue;
-
-      if (TRACKED_TAGS.has(fiber.tag)) {
+      if (TRACKED_TAGS.has(fiber.tag) && didRender(fiber)) {
         const name = displayName(fiber);
-        if (name) this.record(name, fiber, duration);
+        if (name) this.record(name, fiber, fiber.actualDuration ?? 0);
       }
+
+      // Children that are the very objects the previous tree had were reused
+      // wholesale: nothing below this fiber took part in the commit.
+      const alternate = fiber.alternate;
+      if (alternate && alternate.child === fiber.child) continue;
 
       for (let child = fiber.child; child; child = child.sibling) stack.push(child);
     }
@@ -96,6 +108,11 @@ export class RenderTracker {
     const existing = this.stats.get(name);
     const entry: ComponentRenderStat = existing ?? { count: 0, totalMs: 0, maxMs: 0, wasted: 0 };
     entry.count += 1;
+    // No alternate means this fiber has never been committed before: the
+    // component is appearing, not updating. Opening a screen mounts thousands
+    // of components once each, and that is not the same thing as a component
+    // that keeps re-rendering.
+    if (!fiber.alternate) entry.mounts = (entry.mounts ?? 0) + 1;
     entry.totalMs += selfMs;
     if (selfMs > entry.maxMs) entry.maxMs = selfMs;
 
@@ -121,6 +138,7 @@ export class RenderTracker {
         totalMs: Math.round(stat.totalMs * 100) / 100,
         maxMs: Math.round(stat.maxMs * 100) / 100,
         ...(stat.wasted ? { wasted: stat.wasted } : {}),
+        ...(stat.mounts ? { mounts: stat.mounts } : {}),
       };
     }
     this.stats.clear();
@@ -133,6 +151,10 @@ export class RenderTracker {
     this.installed = false;
     this.stats.clear();
   }
+}
+
+function didRender(fiber: Fiber): boolean {
+  return (((fiber.flags ?? fiber.effectTag ?? 0) as number) & PERFORMED_WORK) !== 0;
 }
 
 function displayName(fiber: Fiber): string | null {

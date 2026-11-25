@@ -1,4 +1,4 @@
-import type { Finding, PerfEvent, Sample, SessionSummary, Severity } from '@rnperf/protocol';
+import type { ComponentRenderStat, Finding, PerfEvent, Sample, SessionSummary, Severity } from '@rnperf/protocol';
 import { round } from '../util/stats.js';
 import { aggregateRenders } from './summarize.js';
 
@@ -57,13 +57,15 @@ const FRAMEWORK_COMPONENTS = new Set([
   'AnimatedComponent', 'RCTView', 'RCTText', 'RCTScrollView', 'AppContainer',
   'RootComponent', 'Context.Provider', 'Context.Consumer', 'Suspense', 'Fragment',
   'StrictMode', 'Profiler', 'ThemeProvider', 'NavigationContainer', 'Screen',
-  'ScreenStack', 'ScreenContainer', 'GestureHandlerRootView',
+  'ScreenStack', 'ScreenContainer', 'GestureHandlerRootView', 'PressabilityDebugView',
 ]);
 
 function isAppComponent(name: string): boolean {
   if (FRAMEWORK_COMPONENTS.has(name)) return false;
   // Internal wrappers React Native and libraries generate.
   if (/^(RCT|RN|Animated|Internal|Base|Styled)[A-Z]/.test(name)) return false;
+  // NativeWind wraps every styled primitive in a `CssInterop.<Name>` component.
+  if (/^CssInterop\b/.test(name)) return false;
   if (/(Provider|Consumer|Context)$/.test(name)) return false;
   return true;
 }
@@ -377,18 +379,25 @@ export function deriveFindings(
 
   /* -------------------------------------------------------- re-renders */
 
+  /*
+   * Judged on updates, not on first mounts. Opening a screen mounts every
+   * component on it exactly once, so a recording that visits a few screens
+   * shows thousands of renders that say nothing about re-rendering.
+   */
   const components = aggregateRenders(samples);
-  const counts = components.map((c) => c.count).sort((a, b) => a - b);
+  const updatesOf = (c: ComponentRenderStat) => Math.max(0, c.count - (c.mounts ?? 0));
+  const counts = components.map(updatesOf).sort((a, b) => a - b);
   const median = counts.length ? counts[Math.floor(counts.length / 2)]! : 0;
 
   for (const comp of components) {
     // Findings must point at code the reader owns.
     if (!isAppComponent(comp.name)) continue;
-    const perSecond = comp.count / durationSec;
+    const updates = updatesOf(comp);
+    const perSecond = updates / durationSec;
     const avgMs = comp.count ? comp.totalMs / comp.count : 0;
 
     if (perSecond >= thresholds.rendersPerSecond) {
-      const looksLikeListRow = median > 0 && comp.count > median * 8 && avgMs < 2;
+      const looksLikeListRow = median > 0 && updates > median * 8 && avgMs < 2;
       out.push({
         kind: looksLikeListRow ? 'large-list-unvirtualised' : 'render-storm',
         severity: perSecond >= thresholds.rendersPerSecond * 3 ? 'high' : 'medium',
@@ -397,8 +406,9 @@ export function deriveFindings(
           : `${comp.name} re-renders constantly`,
         subject: comp.name,
         evidence:
-          `${comp.count} renders in ${durationSec.toFixed(0)}s (${round(perSecond, 1)}/s), ` +
-          `${round(comp.totalMs)}ms total, ${round(avgMs, 2)}ms average` +
+          `${updates} re-renders in ${durationSec.toFixed(0)}s (${round(perSecond, 1)}/s)` +
+          (comp.mounts ? `, not counting ${comp.mounts} first mounts` : '') +
+          `, ${round(comp.totalMs)}ms total, ${round(avgMs, 2)}ms average` +
           (comp.wasted ? `, ${comp.wasted} with unchanged props.` : '.'),
         suggestion: looksLikeListRow
           ? `${comp.name} is rendering far more often than anything else while staying individually cheap, ` +
@@ -412,6 +422,7 @@ export function deriveFindings(
         data: {
           component: comp.name,
           renders: comp.count,
+          updates,
           rendersPerSecond: round(perSecond, 1),
           totalMs: round(comp.totalMs),
           avgMs: round(avgMs, 2),

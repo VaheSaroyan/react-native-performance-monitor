@@ -29,6 +29,7 @@ export interface ComponentRenderStat {
   totalMs: number;
   maxMs: number;
   wasted?: number;
+  mounts?: number;
 }
 
 export type PerfEvent =
