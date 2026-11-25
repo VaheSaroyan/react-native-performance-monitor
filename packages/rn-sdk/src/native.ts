@@ -10,8 +10,10 @@ export interface NativeFrameMetrics {
   frameP99Ms?: number;
   jankPercent?: number;
   framesRendered?: number;
-  /** The display's maximum refresh rate — 120 on ProMotion hardware. */
+  /** The refresh rate the system was actually driving the display at during the window. */
   refreshHz?: number;
+  /** The display's maximum refresh rate — 120 on ProMotion hardware. */
+  displayMaxHz?: number;
   /** iOS: physical footprint in MB — what Xcode shows, and what jetsam judges. */
   memoryMB?: number;
   /** Android: Java heap in use. */

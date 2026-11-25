@@ -81,7 +81,13 @@ export function deriveFindings(
 ): Finding[] {
   const out: Finding[] = [];
   const m = summary.metrics;
-  const refreshHz = samples.find((s) => typeof s.uiRefreshHz === 'number')?.uiRefreshHz;
+  // The app reports the rate it was actually driven at, which an adaptive
+  // display changes during a run; the commonest reading is the one most frames
+  // were judged against.
+  const refreshHz = commonest(samples, 'uiRefreshHz');
+  const displayMaxHz = commonest(samples, 'uiDisplayMaxHz');
+  const heldBelowDisplay =
+    !!refreshHz && !!displayMaxHz && Math.round(displayMaxHz) > Math.round(refreshHz);
   const displayMs = refreshHz && refreshHz > 20 ? 1000 / refreshHz : thresholds.frameBudgetMs;
   /*
    * A panel's refresh rate is not the rate the app is allowed to reach. iOS
@@ -197,6 +203,18 @@ export function deriveFindings(
     ...(refreshHz ? { refreshHz: Math.round(refreshHz) } : {}),
   };
 
+  const belowDisplayRateAdvice = summary.meta.device.platform === 'ios'
+    ? 'iOS caps an app at 60fps on a ProMotion iPhone unless it opts out. Set ' +
+      '`CADisableMinimumFrameDurationOnPhone` to `true` in `Info.plist` — under ' +
+      '`ios.infoPlist` in `app.config.ts` or `app.json` on Expo, since a prebuild overwrites ' +
+      'the file. iPad Pro needs no key. The app has to be rebuilt and reinstalled for it to ' +
+      'take effect, and a simulator always reports 60Hz, so only a physical device can confirm ' +
+      'it. Move animations to the native driver or Reanimated first: at 120Hz the budget ' +
+      'halves to 8.3ms, so anything already near the limit will start dropping frames.'
+    : 'The system chose this rate. An app can ask for a higher one with `Surface.setFrameRate` ' +
+      'or `preferredDisplayModeId`, but check animations are off the JS thread first — the ' +
+      'budget shrinks in proportion.';
+
   const UI_FIX =
     'Frames are being dropped on the native UI thread, which JS-side fixes will not help. ' +
     'Look for deep view hierarchies, overlapping translucent views, large uncached images ' +
@@ -241,7 +259,6 @@ export function deriveFindings(
      * quiet line, since the raw counter calls this 50% jank and a reader who
      * saw that number deserves to know where it went.
      */
-    const ios = summary.meta.device.platform === 'ios';
     out.push({
       kind: 'ui-below-display-rate',
       severity: 'low',
@@ -251,18 +268,20 @@ export function deriveFindings(
         `offers, and ${round(jankPct ?? 0, 1)}% of them miss it. The app is steady, just not fast. ` +
         `The device itself reports ${round(jank?.p50 ?? 0, 1)}% jank, because it counts against ` +
         `the panel's ${round(displayMs)}ms rather than the app's.${frameTimes}`,
-      suggestion: ios
-        ? 'iOS caps an app at 60fps on a ProMotion iPhone unless it opts out. Set ' +
-          '`CADisableMinimumFrameDurationOnPhone` to `true` in `Info.plist` — under ' +
-          '`ios.infoPlist` in `app.config.ts` or `app.json` on Expo, since a prebuild overwrites ' +
-          'the file. iPad Pro needs no key. The app has to be rebuilt and reinstalled for it to ' +
-          'take effect, and a simulator always reports 60Hz, so only a physical device can confirm ' +
-          'it. Move animations to the native driver or Reanimated first: at 120Hz the budget ' +
-          'halves to 8.3ms, so anything already near the limit will start dropping frames.'
-        : 'The system chose this rate. An app can ask for a higher one with `Surface.setFrameRate` ' +
-          'or `preferredDisplayModeId`, but check animations are off the JS thread first — the ' +
-          'budget shrinks in proportion.',
+      suggestion: belowDisplayRateAdvice,
       data: numbers,
+    });
+  } else if (heldBelowDisplay && refreshHz && displayMaxHz) {
+    out.push({
+      kind: 'ui-below-display-rate',
+      severity: 'low',
+      title: `Display driven at ${Math.round(refreshHz)}Hz of a possible ${Math.round(displayMaxHz)}Hz`,
+      evidence:
+        `The system gave this app ${round(displayMs)}ms per frame for most of the recording, although ` +
+        `the display can refresh every ${round(1000 / displayMaxHz)}ms. Frames were judged against the ` +
+        `time they were given, so this is a ceiling the app is held to, not frames it dropped.${frameTimes}`,
+      suggestion: belowDisplayRateAdvice,
+      data: { ...numbers, displayMaxHz: Math.round(displayMaxHz) },
     });
   }
 
@@ -470,4 +489,19 @@ function worstScreen(
     }
   }
   return bestScreen;
+}
+
+/** The value a metric took most often across the samples that reported it. */
+function commonest(samples: Sample[], key: 'uiRefreshHz' | 'uiDisplayMaxHz'): number | undefined {
+  const counts = new Map<number, number>();
+  for (const sample of samples) {
+    const value = sample[key];
+    if (typeof value === 'number') counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  let best: number | undefined;
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (count > bestCount) { best = value; bestCount = count; }
+  }
+  return best;
 }

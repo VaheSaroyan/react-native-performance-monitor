@@ -44,7 +44,7 @@ type AvgKey =
   | 'rssMB' | 'javaHeapMB' | 'nativeHeapMB';
 type MaxKey = 'jsStallMaxMs' | 'frameP50Ms' | 'frameP95Ms' | 'frameP99Ms';
 type SumKey = 'jsStallCount' | 'bridgeCalls' | 'framesRendered';
-type LastKey = 'uiRefreshHz';
+type LastKey = 'uiRefreshHz' | 'uiDisplayMaxHz';
 
 /**
  * Several SDK samples can arrive inside one daemon tick. Rates are averaged,
@@ -86,7 +86,7 @@ export function mergeSdkSamples(batch: Partial<Sample>[]): Partial<Sample> {
   // contained a stutter is the number that matters.
   max('jsStallMaxMs'); max('frameP50Ms'); max('frameP95Ms'); max('frameP99Ms');
   sum('jsStallCount'); sum('bridgeCalls'); sum('framesRendered');
-  last('uiRefreshHz');
+  last('uiRefreshHz'); last('uiDisplayMaxHz');
 
   const lastScreen = [...batch].reverse().find((s) => s.screen)?.screen;
   if (lastScreen) out.screen = lastScreen;

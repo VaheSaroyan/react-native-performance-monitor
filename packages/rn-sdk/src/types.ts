@@ -12,6 +12,7 @@ export interface Sample {
   // Filled by the RNPerfSDK native module (iOS only).
   uiFps?: number;
   uiRefreshHz?: number;
+  uiDisplayMaxHz?: number;
   frameP50Ms?: number;
   frameP95Ms?: number;
   frameP99Ms?: number;

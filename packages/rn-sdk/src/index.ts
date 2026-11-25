@@ -148,6 +148,7 @@ class PerfMonitor {
       const frames = await this.nativeFrames.read();
       if (frames.uiFps !== undefined) sample.uiFps = round1(frames.uiFps);
       if (frames.refreshHz !== undefined) sample.uiRefreshHz = frames.refreshHz;
+      if (frames.displayMaxHz !== undefined) sample.uiDisplayMaxHz = frames.displayMaxHz;
       if (frames.frameP50Ms !== undefined) sample.frameP50Ms = round2(frames.frameP50Ms);
       if (frames.frameP95Ms !== undefined) sample.frameP95Ms = round2(frames.frameP95Ms);
       if (frames.frameP99Ms !== undefined) sample.frameP99Ms = round2(frames.frameP99Ms);

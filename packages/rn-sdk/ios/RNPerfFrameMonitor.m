@@ -27,7 +27,9 @@ static const double RNPerfJankFactor = 1.5;
   CFTimeInterval _windowStart;
   NSUInteger _droppedFrames;
   NSUInteger _overflowedFrames;
-  double _refreshHz;
+  double _displayMaxHz;
+  double _grantedSumMs;
+  NSUInteger _grantedCount;
   BOOL _running;
 }
 
@@ -49,7 +51,7 @@ RCT_EXPORT_MODULE(RNPerfFrameMonitor)
 - (instancetype)init {
   if (self = [super init]) {
     _intervalsMs = [NSMutableArray arrayWithCapacity:RNPerfMaxBufferedFrames];
-    _refreshHz = 60.0;
+    _displayMaxHz = 60.0;
     _lastTimestamp = 0;
     _windowStart = 0;
   }
@@ -68,15 +70,25 @@ RCT_EXPORT_METHOD(start) {
   }
   _running = YES;
 
-  // ProMotion displays run at up to 120Hz, so the frame budget is 8.3ms there,
-  // not 16.7ms. Reading the real figure keeps "janky" honest on every device.
   NSInteger maxFps = UIScreen.mainScreen.maximumFramesPerSecond;
-  _refreshHz = maxFps > 0 ? (double)maxFps : 60.0;
+  _displayMaxHz = maxFps > 0 ? (double)maxFps : 60.0;
 
   [self resetWindow];
   _lastTimestamp = 0;
 
   _displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(onFrame:)];
+
+  // A display link that states no preference is served at 60Hz on a ProMotion
+  // iPhone, so the monitor would time a 120Hz display at half its rate and call
+  // every frame late. Asking for the display's own maximum lets it see each
+  // refresh. iOS still grants less when it must (Low Power Mode, or an iPhone
+  // app without CADisableMinimumFrameDurationOnPhone); onFrame reads what was
+  // actually granted and judges frames against that.
+  if (@available(iOS 15.0, *)) {
+    float maximum = (float)_displayMaxHz;
+    float minimum = maximum > 60.0f ? 80.0f : MIN(30.0f, maximum);
+    _displayLink.preferredFrameRateRange = CAFrameRateRangeMake(minimum, maximum, maximum);
+  }
 
   // Common modes keeps the link firing while a scroll view is tracking a drag.
   // The default mode would go quiet during exactly the interaction whose jank
@@ -104,7 +116,7 @@ RCT_EXPORT_METHOD(getMetrics:(RCTPromiseResolveBlock)resolve
                       reject:(RCTPromiseRejectBlock)reject) {
   NSMutableDictionary *result = [NSMutableDictionary dictionary];
 
-  result[@"refreshHz"] = @(_refreshHz);
+  result[@"displayMaxHz"] = @(_displayMaxHz);
 
   double footprintMB = [self physicalFootprintMB];
   if (footprintMB >= 0) {
@@ -126,8 +138,14 @@ RCT_EXPORT_METHOD(getMetrics:(RCTPromiseResolveBlock)resolve
     return;
   }
 
+  // The rate iOS granted this window, snapped to a whole number because the
+  // granted interval wobbles by microseconds around 8.33ms or 16.67ms.
+  double grantedMs = _grantedCount > 0 ? _grantedSumMs / (double)_grantedCount : 1000.0 / _displayMaxHz;
+  double refreshHz = MIN(_displayMaxHz, round(1000.0 / grantedMs));
+  result[@"refreshHz"] = @(refreshHz);
+
   result[@"framesRendered"] = @(frames);
-  result[@"uiFps"] = @(MIN(_refreshHz, (double)frames / (elapsedMs / 1000.0)));
+  result[@"uiFps"] = @(MIN(_displayMaxHz, (double)frames / (elapsedMs / 1000.0)));
 
   if (_intervalsMs.count > 0) {
     NSArray<NSNumber *> *sorted = [_intervalsMs sortedArrayUsingSelector:@selector(compare:)];
@@ -136,9 +154,9 @@ RCT_EXPORT_METHOD(getMetrics:(RCTPromiseResolveBlock)resolve
     result[@"frameP99Ms"] = @([RNPerfFrameMonitor quantile:sorted at:0.99]);
   }
 
-  // Expected frames for the window, so the percentage is of what the display
-  // could have shown rather than of what it managed to.
-  double expected = (elapsedMs / 1000.0) * _refreshHz;
+  // Expected frames for the window at the granted rate, so the percentage is of
+  // what the display was asked to show rather than of what it managed to.
+  double expected = elapsedMs / grantedMs;
   if (expected >= 1.0) {
     double jank = ((double)_droppedFrames / expected) * 100.0;
     result[@"jankPercent"] = @(MIN(100.0, MAX(0.0, jank)));
@@ -170,7 +188,15 @@ RCT_EXPORT_METHOD(isAvailable:(RCTPromiseResolveBlock)resolve
     return;
   }
 
-  double budgetMs = 1000.0 / _refreshHz;
+  // The interval iOS scheduled for this frame. On an adaptive display this is
+  // the real budget; the display's maximum rate is only its upper bound.
+  double budgetMs = (link.targetTimestamp - link.timestamp) * 1000.0;
+  if (budgetMs <= 0) {
+    budgetMs = 1000.0 / _displayMaxHz;
+  }
+  _grantedSumMs += budgetMs;
+  _grantedCount += 1;
+
   if (intervalMs > budgetMs * RNPerfJankFactor) {
     // One interval can swallow several refreshes; count every missed one.
     NSUInteger missed = (NSUInteger)llround(intervalMs / budgetMs) - 1;
@@ -204,6 +230,8 @@ RCT_EXPORT_METHOD(isAvailable:(RCTPromiseResolveBlock)resolve
   [_intervalsMs removeAllObjects];
   _droppedFrames = 0;
   _overflowedFrames = 0;
+  _grantedSumMs = 0;
+  _grantedCount = 0;
   _windowStart = CACurrentMediaTime();
 }
 

@@ -77,8 +77,10 @@ export interface Sample {
 
   // --- UI thread frames (Android gfxinfo, or the iOS CADisplayLink module)
   uiFps?: number;
-  /** Display's maximum refresh rate, so "janky" is judged against the real budget. */
+  /** Refresh rate the display was actually driven at, so "janky" is judged against the real budget. */
   uiRefreshHz?: number;
+  /** The most the display can do — 120 on ProMotion hardware — when the app reports it separately. */
+  uiDisplayMaxHz?: number;
   frameP50Ms?: number;
   frameP95Ms?: number;
   frameP99Ms?: number;
@@ -264,6 +266,8 @@ export type LiveMessage =
   | { type: 'event'; sessionId: string; event: PerfEvent }
   | { type: 'session-started'; meta: SessionMeta }
   | { type: 'session-ended'; meta: SessionMeta }
+  | { type: 'session-updated'; meta: SessionMeta }
+  | { type: 'session-deleted'; sessionId: string }
   | { type: 'sdk-connected'; clientId: string; app: string; platform: Platform }
   | { type: 'sdk-disconnected'; clientId: string }
   | { type: 'error'; message: string };
@@ -311,6 +315,7 @@ export const METRIC_LABELS: Record<string, string> = {
   bridgeCalls: 'Bridge calls',
   framesRendered: 'Frames rendered',
   uiRefreshHz: 'Display refresh rate',
+  uiDisplayMaxHz: 'Display maximum refresh rate',
 };
 
 export const METRIC_UNITS: Record<string, string> = {
@@ -319,5 +324,5 @@ export const METRIC_UNITS: Record<string, string> = {
   graphicsMB: 'MB', jsHeapMB: 'MB', jsHeapTotalMB: 'MB',
   jsStallMaxMs: 'ms', jsStallCount: '', frameP50Ms: 'ms',
   frameP95Ms: 'ms', frameP99Ms: 'ms', jankPercent: '%',
-  bridgeCalls: '', framesRendered: '', uiRefreshHz: 'Hz',
+  bridgeCalls: '', framesRendered: '', uiRefreshHz: 'Hz', uiDisplayMaxHz: 'Hz',
 };

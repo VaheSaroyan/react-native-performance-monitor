@@ -161,9 +161,25 @@ export function MetricChart({
  * budget it is judged against. The refresh rate comes from the device when the
  * app reports it, so a 120Hz phone is held to 8.3ms rather than 16.7ms.
  */
+function lastNumber(samples: Sample[], key: 'uiRefreshHz' | 'uiDisplayMaxHz'): number | undefined {
+  for (let index = samples.length - 1; index >= 0; index -= 1) {
+    const value = samples[index][key];
+    if (typeof value === 'number') return value;
+  }
+  return undefined;
+}
+
 export function chartsFor(samples: Sample[]): Series[] {
-  const refreshHz = samples.find((s) => typeof s.uiRefreshHz === 'number')?.uiRefreshHz ?? 60;
+  // The rate the display was last driven at, not the first one seen: an adaptive
+  // display changes rate mid-recording, and the latest reading is the one the
+  // newest frames were judged against.
+  const refreshHz = lastNumber(samples, 'uiRefreshHz') ?? 60;
+  const displayMaxHz = lastNumber(samples, 'uiDisplayMaxHz');
   const budgetMs = Math.round((1000 / refreshHz) * 100) / 100;
+  const capped = displayMaxHz !== undefined && Math.round(displayMaxHz) > Math.round(refreshHz);
+  const rateLabel = capped
+    ? `running at ${Math.round(refreshHz)}Hz of ${Math.round(displayMaxHz)}Hz`
+    : `${Math.round(refreshHz)}Hz display`;
   const budgetLabel = `${budgetMs}ms budget · ${Math.round(refreshHz)}Hz`;
 
   const all: Series[] = [
@@ -174,8 +190,8 @@ export function chartsFor(samples: Sample[]): Series[] {
     },
     {
       key: 'uiFps', label: 'UI thread', color: 'var(--m-ui)', unit: ' fps',
-      domain: [0, Math.max(60, refreshHz)],
-      threshold: { value: refreshHz * 0.9, label: `${Math.round(refreshHz)}Hz display`, side: 'below-is-bad' },
+      domain: [0, Math.max(60, refreshHz, displayMaxHz ?? 0)],
+      threshold: { value: refreshHz * 0.9, label: rateLabel, side: 'below-is-bad' },
     },
     {
       key: 'frameP95Ms', label: 'Frame time p95', color: 'var(--m-ui)', unit: ' ms',
