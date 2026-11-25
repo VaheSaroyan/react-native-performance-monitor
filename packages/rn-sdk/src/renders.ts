@@ -77,13 +77,17 @@ export class RenderTracker {
   private walk(root: Fiber | null): void {
     if (!root) return;
     // Iterative traversal: a deep React Native tree can blow a recursive stack.
-    const stack: Fiber[] = [root];
+    // Each entry carries whether an ancestor is a navigation screen that is
+    // mounted but not focused, so work done for a screen nobody is looking at
+    // can be told apart from work for the one on display.
+    const stack: Array<[Fiber, boolean]> = [[root, false]];
     while (stack.length) {
-      const fiber = stack.pop()!;
+      const [fiber, inheritedOffScreen] = stack.pop()!;
+      const offScreen = inheritedOffScreen || isBlurredScreen(fiber);
 
       if (TRACKED_TAGS.has(fiber.tag) && didRender(fiber)) {
         const name = displayName(fiber);
-        if (name) this.record(name, fiber, fiber.actualDuration ?? 0);
+        if (name) this.record(name, fiber, fiber.actualDuration ?? 0, offScreen);
       }
 
       // Children that are the very objects the previous tree had were reused
@@ -91,11 +95,11 @@ export class RenderTracker {
       const alternate = fiber.alternate;
       if (alternate && alternate.child === fiber.child) continue;
 
-      for (let child = fiber.child; child; child = child.sibling) stack.push(child);
+      for (let child = fiber.child; child; child = child.sibling) stack.push([child, offScreen]);
     }
   }
 
-  private record(name: string, fiber: Fiber, duration: number): void {
+  private record(name: string, fiber: Fiber, duration: number, offScreen: boolean): void {
     // Self time: a parent's duration includes its children's, and charging the
     // same milliseconds to every ancestor would make the root look like the
     // hotspot in every single app.
@@ -113,6 +117,7 @@ export class RenderTracker {
     // of components once each, and that is not the same thing as a component
     // that keeps re-rendering.
     if (!fiber.alternate) entry.mounts = (entry.mounts ?? 0) + 1;
+    else if (offScreen) entry.offScreen = (entry.offScreen ?? 0) + 1;
     entry.totalMs += selfMs;
     if (selfMs > entry.maxMs) entry.maxMs = selfMs;
 
@@ -139,6 +144,7 @@ export class RenderTracker {
         maxMs: Math.round(stat.maxMs * 100) / 100,
         ...(stat.wasted ? { wasted: stat.wasted } : {}),
         ...(stat.mounts ? { mounts: stat.mounts } : {}),
+        ...(stat.offScreen ? { offScreen: stat.offScreen } : {}),
       };
     }
     this.stats.clear();
@@ -151,6 +157,48 @@ export class RenderTracker {
     this.installed = false;
     this.stats.clear();
   }
+}
+
+/**
+ * Leaving a screen re-renders parts of it once, as focus state propagates. That
+ * is the transition itself, not background work, so a screen only counts as
+ * off screen once it has been blurred for this long.
+ */
+const BLUR_SETTLE_MS = 1000;
+
+const screenFocus = new Map<string, { blurred: boolean; since: number }>();
+
+/**
+ * React Navigation renders each screen through a component that receives its
+ * `route` and a `navigation` object, and keeps blurred screens mounted. That
+ * pair of props is what identifies a screen here; `isFocused()` is read at
+ * commit time, which is exactly when the question is being asked.
+ */
+function isBlurredScreen(fiber: Fiber): boolean {
+  const props = fiber.memoizedProps;
+  if (!props || typeof props !== 'object' || !props.route) return false;
+  const navigation = props.navigation;
+  if (!navigation || typeof navigation.isFocused !== 'function') return false;
+  const key = props.route.key;
+  if (typeof key !== 'string') return false;
+
+  let blurred: boolean;
+  try {
+    blurred = navigation.isFocused() === false;
+  } catch {
+    return false;
+  }
+
+  const now = Date.now();
+  const known = screenFocus.get(key);
+  if (!known || known.blurred !== blurred) {
+    // Bounded by the number of screens ever mounted, which stays small; clear
+    // it anyway if an app churns through dynamic routes.
+    if (screenFocus.size > 500) screenFocus.clear();
+    screenFocus.set(key, { blurred, since: now });
+    return false;
+  }
+  return blurred && now - known.since >= BLUR_SETTLE_MS;
 }
 
 function didRender(fiber: Fiber): boolean {

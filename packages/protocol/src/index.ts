@@ -109,6 +109,8 @@ export interface ComponentRenderStat {
   wasted?: number;
   /** How many of `count` were a component appearing for the first time rather than updating. */
   mounts?: number;
+  /** How many of `count` happened on a navigation screen that was not the focused one. */
+  offScreen?: number;
 }
 
 /* ------------------------------------------------------------------ events */
@@ -179,6 +181,7 @@ export type FindingKind =
   | 'ui-jank'
   | 'ui-below-display-rate'
   | 'render-storm'
+  | 'off-screen-render'
   | 'expensive-render'
   | 'memory-growth'
   | 'high-cpu'

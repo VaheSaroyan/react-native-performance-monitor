@@ -18,6 +18,7 @@ export interface Thresholds {
   cpuPercent: number;
   ttiMs: number;
   rendersPerSecond: number;
+  offScreenRendersPerSecond: number;
   renderMsAvg: number;
   bridgeCallsPerSecond: number;
 }
@@ -36,6 +37,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   cpuPercent: 85,
   ttiMs: 2000,
   rendersPerSecond: 15,
+  offScreenRendersPerSecond: 0.5,
   renderMsAvg: 8,
   bridgeCallsPerSecond: 400,
 };
@@ -58,6 +60,8 @@ const FRAMEWORK_COMPONENTS = new Set([
   'RootComponent', 'Context.Provider', 'Context.Consumer', 'Suspense', 'Fragment',
   'StrictMode', 'Profiler', 'ThemeProvider', 'NavigationContainer', 'Screen',
   'ScreenStack', 'ScreenContainer', 'GestureHandlerRootView', 'PressabilityDebugView',
+  'SceneView', 'Route', 'RouteNode', 'EnsureSingleNavigator', 'StaticContainer',
+  'CellRendererComponent', 'Svg', 'G', 'Path', 'Line', 'Circle', 'Rect',
 ]);
 
 function isAppComponent(name: string): boolean {
@@ -395,6 +399,41 @@ export function deriveFindings(
     const updates = updatesOf(comp);
     const perSecond = updates / durationSec;
     const avgMs = comp.count ? comp.totalMs / comp.count : 0;
+
+    /*
+     * Work for a screen nobody is looking at is waste at any rate, so this is
+     * held to a far lower bar than a visible component re-rendering. A tab
+     * navigator keeps blurred screens mounted, and a component there that
+     * subscribes to live data goes on rendering — and committing — for it.
+     */
+    const offScreen = comp.offScreen ?? 0;
+    const offScreenPerSecond = offScreen / durationSec;
+    if (offScreen >= 10 && offScreenPerSecond >= thresholds.offScreenRendersPerSecond) {
+      const share = updates ? Math.round((offScreen / updates) * 100) : 100;
+      out.push({
+        kind: 'off-screen-render',
+        severity: offScreenPerSecond >= thresholds.offScreenRendersPerSecond * 6 ? 'high' : 'medium',
+        title: `${comp.name} re-renders on a screen that is not visible`,
+        subject: comp.name,
+        evidence:
+          `${offScreen} of its ${updates} re-renders (${share}%) happened while its screen was mounted but not ` +
+          `focused — ${round(offScreenPerSecond, 1)}/s over ${durationSec.toFixed(0)}s.`,
+        suggestion:
+          `${comp.name} keeps reacting to data while its screen is in the background. Stop the subscription ` +
+          'from notifying when the screen is blurred: gate store selectors and React Query observers on ' +
+          '`navigation.isFocused()` (for React Query, pass `notifyOnChangeProps` a function that returns `[]` ' +
+          'while blurred), pause timers in `useFocusEffect`, and re-sync once on focus. `freezeOnBlur` also ' +
+          'stops these renders, but a frozen screen that subscribes to a fast-changing store schedules a ' +
+          'retry on every write, so check the result.',
+        data: {
+          component: comp.name,
+          offScreenRenders: offScreen,
+          offScreenPerSecond: round(offScreenPerSecond, 1),
+          updates,
+        },
+      });
+      continue;
+    }
 
     if (perSecond >= thresholds.rendersPerSecond) {
       const looksLikeListRow = median > 0 && updates > median * 8 && avgMs < 2;

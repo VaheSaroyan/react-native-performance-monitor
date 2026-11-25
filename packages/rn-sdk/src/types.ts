@@ -30,6 +30,7 @@ export interface ComponentRenderStat {
   maxMs: number;
   wasted?: number;
   mounts?: number;
+  offScreen?: number;
 }
 
 export type PerfEvent =

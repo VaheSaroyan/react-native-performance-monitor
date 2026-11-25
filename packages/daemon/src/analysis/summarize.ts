@@ -57,6 +57,7 @@ export function aggregateRenders(samples: Sample[]): Array<{ name: string } & Co
         existing.maxMs = Math.max(existing.maxMs, stat.maxMs);
         if (stat.wasted !== undefined) existing.wasted = (existing.wasted ?? 0) + stat.wasted;
         if (stat.mounts !== undefined) existing.mounts = (existing.mounts ?? 0) + stat.mounts;
+        if (stat.offScreen !== undefined) existing.offScreen = (existing.offScreen ?? 0) + stat.offScreen;
       }
     }
   }
