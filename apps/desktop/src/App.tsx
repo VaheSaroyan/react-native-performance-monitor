@@ -6,6 +6,7 @@ import { METRIC_LABELS, METRIC_UNITS } from '@rnperf/protocol';
 import { api, resolvePort, useLiveStream, useSampleBuffer } from './api';
 import { MetricChart, chartsFor } from './components/Charts';
 import { ComponentTable, FindingsList, Verdict, countsBySeverity } from './components/Findings';
+import { RecordingRow } from './components/RecordingRow';
 
 type View =
   | { kind: 'welcome' }
@@ -45,7 +46,9 @@ export default function App() {
       case 'sessions': refreshSessions(); break;
       case 'sample': if (message.sessionId === liveSessionId) push(message.sample); break;
       case 'session-started':
-      case 'session-ended': refreshSessions(); break;
+      case 'session-ended':
+      case 'session-updated':
+      case 'session-deleted': refreshSessions(); break;
       case 'sdk-connected': setSdkApps((a) => [...new Set([...a, message.app])]); break;
       case 'sdk-disconnected': setSdkApps([]); break;
       case 'error': setNotice(message.message); break;
@@ -91,6 +94,32 @@ export default function App() {
   const stopRecording = async (sessionId: string) => {
     await api.stopSession(sessionId).catch(() => {});
     setLiveSessionId(null);
+    setTallies((prev) => { const next = { ...prev }; delete next[sessionId]; return next; });
+    refreshSessions();
+  };
+
+  const renameRecording = async (sessionId: string, label: string) => {
+    try {
+      await api.renameSession(sessionId, label);
+      setNotice(null);
+    } catch (err) {
+      setNotice((err as Error).message);
+    }
+    refreshSessions();
+  };
+
+  const deleteRecording = async (sessionId: string) => {
+    try {
+      await api.deleteSession(sessionId);
+      setNotice(null);
+    } catch (err) {
+      setNotice((err as Error).message);
+      return;
+    }
+    if (liveSessionId === sessionId) setLiveSessionId(null);
+    setView((current) =>
+      current.kind === 'session' && current.sessionId === sessionId ? { kind: 'welcome' } : current,
+    );
     setTallies((prev) => { const next = { ...prev }; delete next[sessionId]; return next; });
     refreshSessions();
   };
@@ -154,37 +183,20 @@ export default function App() {
             )}
           </div>
           {sessions.length === 0 && <div className="hint">No recordings yet.</div>}
-          {sessions.slice(0, 40).map((s) => {
-            const tally = tallies[s.id];
-            return (
-              <div
-                key={s.id}
-                className={`row ${view.kind === 'session' && view.sessionId === s.id ? 'active' : ''}`}
-                onClick={() => {
-                  setView({ kind: 'session', sessionId: s.id });
-                  if (s.id !== liveSessionId) setLiveSessionId(s.endedAt ? null : s.id);
-                }}
-              >
-                <span className={`dot ${!s.endedAt ? 'rec' : ''}`} />
-                <div className="row-main">
-                  <div className="row-title">{s.label}</div>
-                  <div className="row-sub">
-                    {new Date(s.startedAt).toLocaleTimeString()}
-                    {s.endedAt ? `, ${Math.round((s.endedAt - s.startedAt) / 1000)}s` : ', recording'}
-                  </div>
-                </div>
-                {tally && (
-                  <span className="tally">
-                    {(['critical', 'high', 'medium'] as Severity[]).flatMap((sev) =>
-                      Array.from({ length: Math.min(tally[sev], 3) }, (_, i) => (
-                        <i className={sev} key={`${sev}-${i}`} />
-                      )),
-                    )}
-                  </span>
-                )}
-              </div>
-            );
-          })}
+          {sessions.map((s) => (
+            <RecordingRow
+              key={s.id}
+              session={s}
+              active={view.kind === 'session' && view.sessionId === s.id}
+              tally={tallies[s.id]}
+              onSelect={() => {
+                setView({ kind: 'session', sessionId: s.id });
+                if (s.id !== liveSessionId) setLiveSessionId(s.endedAt ? null : s.id);
+              }}
+              onRename={(label) => renameRecording(s.id, label)}
+              onDelete={() => deleteRecording(s.id)}
+            />
+          ))}
         </div>
       </aside>
 
@@ -196,6 +208,7 @@ export default function App() {
         {view.kind === 'session' && (
           <SessionView
             sessionId={view.sessionId}
+            label={sessions.find((s) => s.id === view.sessionId)?.label}
             isLive={liveSessionId === view.sessionId}
             samples={samples}
             onStop={() => stopRecording(view.sessionId)}
@@ -479,9 +492,9 @@ function capabilityRows(device: DeviceInfo): CapabilityRow[] {
 /* ----------------------------------------------------------- session */
 
 function SessionView({
-  sessionId, isLive, samples, onStop,
+  sessionId, label, isLive, samples, onStop,
 }: {
-  sessionId: string; isLive: boolean; samples: Sample[]; onStop: () => void;
+  sessionId: string; label?: string; isLive: boolean; samples: Sample[]; onStop: () => void;
 }) {
   // A finished run opens on its verdict; a live one opens on the trace.
   const [tab, setTab] = useState<'findings' | 'charts'>(isLive ? 'charts' : 'findings');
@@ -549,7 +562,7 @@ function SessionView({
     <>
       <div className="topbar">
         <div>
-          <h1>{analysis?.summary.meta.label ?? 'Recording'}</h1>
+          <h1>{label ?? analysis?.summary.meta.label ?? 'Recording'}</h1>
           <div className="sub">
             {isLive ? `Recording, ${shown.length} samples so far` : `${shown.length} samples`}
           </div>

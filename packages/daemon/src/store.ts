@@ -21,7 +21,12 @@ export class SessionStore {
     await mkdir(SESSIONS_DIR, { recursive: true });
   }
 
+  /**
+   * Ids arrive from URLs, and delete removes this directory recursively, so
+   * anything that is not a plain id must never be turned into a path.
+   */
   private dir(id: string): string {
+    if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(`Invalid session id: ${id}`);
     return join(SESSIONS_DIR, id);
   }
 

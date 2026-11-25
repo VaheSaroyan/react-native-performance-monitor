@@ -64,6 +64,7 @@ export class Daemon {
     this.sessions.on('event', (sessionId, event) => this.broadcast({ type: 'event', sessionId, event }));
     this.sessions.on('started', (meta) => this.broadcast({ type: 'session-started', meta }));
     this.sessions.on('ended', (meta) => this.broadcast({ type: 'session-ended', meta }));
+    this.sessions.on('updated', (meta) => this.broadcast({ type: 'session-updated', meta }));
     this.sessions.on('warning', (_id, message) => this.broadcast({ type: 'error', message }));
 
     this.http = createServer((req, res) => void this.handleHttp(req, res));
@@ -192,7 +193,7 @@ export class Daemon {
   private async handleHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', 'content-type');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
     if (req.method === 'OPTIONS') {
       res.writeHead(204).end();
       return;
@@ -274,8 +275,20 @@ export class Daemon {
       return { session: meta };
     }
     if (resource === 'sessions' && id && !action && method === 'DELETE') {
+      await this.requireMeta(id);
       await this.sessions.stop(id).catch(() => null);
-      return { deleted: await this.store.delete(id) };
+      const deleted = await this.store.delete(id);
+      if (deleted) this.broadcast({ type: 'session-deleted', sessionId: id });
+      return { deleted };
+    }
+    if (resource === 'sessions' && id && !action && method === 'PATCH') {
+      const body = await readJson<{ label?: unknown }>(req);
+      const label = typeof body.label === 'string' ? body.label.trim() : '';
+      if (!label) throw new Error('A recording needs a name');
+      if (label.length > 120) throw new Error('That name is too long (120 characters at most)');
+      const meta = await this.sessions.rename(id, label);
+      if (!meta) throw new Error(`No recording with id ${id}`);
+      return { session: meta };
     }
     if (resource === 'sessions' && id && !action && method === 'GET') {
       const meta = await this.requireMeta(id);

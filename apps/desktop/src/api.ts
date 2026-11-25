@@ -44,6 +44,8 @@ export const api = {
     request<{ session: SessionMeta }>('/api/sessions', { method: 'POST', body: JSON.stringify(config) }),
   stopSession: (id: string) => request<{ session: SessionMeta }>(`/api/sessions/${id}/stop`, { method: 'POST' }),
   deleteSession: (id: string) => request<{ deleted: boolean }>(`/api/sessions/${id}`, { method: 'DELETE' }),
+  renameSession: (id: string, label: string) =>
+    request<{ session: SessionMeta }>(`/api/sessions/${id}`, { method: 'PATCH', body: JSON.stringify({ label }) }),
   samples: (id: string, full = false) =>
     request<{ samples: Sample[] }>(`/api/sessions/${id}/samples${full ? '?full=1' : ''}`),
   // `locate` resolves component names to files by searching the project, which

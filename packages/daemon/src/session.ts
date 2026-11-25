@@ -209,6 +209,21 @@ export class SessionManager extends EventEmitter {
     return this.sessions.get(id);
   }
 
+  /**
+   * Renames a recording, live or finished. A live session keeps its own copy
+   * of the metadata and writes it again when it stops, so that copy has to
+   * change too or the old name would come back.
+   */
+  async rename(id: string, label: string): Promise<SessionMeta | null> {
+    const live = this.sessions.get(id);
+    const meta = live?.meta ?? (await this.store.getMeta(id));
+    if (!meta) return null;
+    meta.label = label;
+    await this.store.writeMeta(meta);
+    this.emit('updated', meta);
+    return meta;
+  }
+
   live(): Session[] {
     return [...this.sessions.values()];
   }
