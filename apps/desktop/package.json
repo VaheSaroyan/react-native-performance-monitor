@@ -1,6 +1,6 @@
 {
   "name": "@rnperf/desktop",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "Measure React Native app performance on devices, simulators and emulators",
   "author": "rnperf",

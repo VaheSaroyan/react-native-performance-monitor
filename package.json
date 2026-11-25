@@ -1,6 +1,6 @@
 {
   "name": "rnperf-monorepo",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": true,
   "description": "React Native performance monitor for macOS, with an MCP bridge for coding agents",
   "license": "MIT",
